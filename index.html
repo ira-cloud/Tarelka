@@ -306,7 +306,6 @@
             <label>Вес сейчас<input type="text" inputmode="decimal" id="pWeight" placeholder="кг" onchange="setProfile('weight', this.value)"></label>
             <label>Талия<input type="text" inputmode="decimal" id="pWaist" placeholder="см" onchange="setProfile('waist', this.value)"></label>
             <label>Цель — вес<input type="text" inputmode="decimal" id="pTarget" placeholder="кг" onchange="setProfile('target', this.value)"></label>
-            <label>Диаметр ваших тарелок<input type="text" inputmode="decimal" id="pPlate" placeholder="см, по желанию" onchange="setProfile('plateCm', this.value)"></label>
             <label>Активность
                 <select id="pActivity" onchange="setProfile('activity', this.value)">
                     <option value="1.2">Сидячая</option>
@@ -373,7 +372,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · состав голосом';
+    const APP_VERSION = '2026-10-09 · масштаб по ложке и руке';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -556,7 +555,6 @@
         document.getElementById('pWaist').value = profile.waist || '';
         document.getElementById('pTarget').value = profile.target || '';
         document.getElementById('pActivity').value = profile.activity || '1.375';
-        document.getElementById('pPlate').value = profile.plateCm || '';
         document.getElementById('pSugar').value = profile.sugarStatus || 'none';
         document.getElementById('pInsulin').checked = profile.insulin === 'true';
         document.getElementById('pMeds').checked = profile.meds === 'true';
@@ -1070,7 +1068,6 @@
         const plan = getPlan(), norms = plan.norms;
         box.innerHTML = '<div class="loading-spinner">🔬 Анализируем тарелку...</div>';
 
-        const myPlate = num(profile.plateCm);
         const prompt = `Ты — профессиональный диетолог и эксперт по компьютерному зрению. Твоя задача — максимально точно посчитать КБЖУ тарелки по фото.
 Работай строго по шагам. Лучше честно указать неуверенность, чем выдать красивую, но неточную цифру.
 
@@ -1082,7 +1079,7 @@
 Слева от тарелки — левая рука пользователя (ладонью вниз, пальцы вверх, большой палец вдоль края тарелки), справа — столовая ложка.
 - Основной эталон — ЛОЖКА, у неё стандартный размер: ${SPOON_SIZE}.
 - Второй эталон — РУКА: ${HAND_SIZES[profile.gender]}.
-${myPlate ? `- Пользователь измерил свои тарелки: диаметр ${myPlate} см. Если тарелка похожа на обычную, используй это значение как самое точное.` : ''}
+- Тарелки у пользователя бывают разные — их размер НЕ известен заранее. Определяй его только по ложке и руке, их размеры не меняются.
 - Посчитай диаметр тарелки отдельно по ложке и по руке. Если оценки расходятся больше чем на 15% — возьми оценку по ложке, снизи confidence и напиши об этом в scale_note.
 - Учитывай перспективу: если снято под углом, тарелка выглядит овалом — диаметр = длинная ось овала.
 - Учитывай глубину посуды: глубокая тарелка или миска вмещает в 1,5–2 раза больше, чем кажется сверху.
