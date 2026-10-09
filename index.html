@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калории по фото</title>
+    <meta name="theme-color" content="#4a6b5d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Калории">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <style>
+        :root {
+            --bg-color: #f7f9f6;
+            --card-bg: #ffffff;
+            --primary: #4a6b5d;
+            --accent: #88a795;
+            --danger: #d96b6b;
+            --text-dark: #2c3e35;
+            --text-muted: #708078;
+            --border: #e2e8e4;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-dark); display: flex; justify-content: center; padding: 12px; }
+
+        .phone-mockup {
+            width: 100%; max-width: 390px; background: var(--card-bg);
+            border-radius: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+            border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        .header { background: var(--primary); color: white; padding: 18px 16px; text-align: center; cursor: pointer; user-select: none; }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+
+        .api-panel { background: #3d584c; padding: 10px 16px; display: none; border-bottom: 1px solid var(--border); }
+        .api-panel input { width: 100%; padding: 8px; border-radius: 8px; border: none; font-size: 11px; outline: none; }
+
+
+
+        input[type="text"], input[type="password"] {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+            border-radius: 10px; font-size: 12px; margin-bottom: 10px; background: #fbfdfc; outline: none;
+        }
+
+        .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 10px 0 6px 0; }
+
+            font-size: 10px; padding: 5px 8px; border-radius: 14px; border: 1px solid var(--border);
+            background: #f0f4f1; color: var(--text-dark); cursor: pointer; user-select: none; transition: all 0.2s;
+        }
+
+        button.btn-primary {
+            width: 100%; padding: 12px; background: var(--primary); color: white;
+            border: none; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 8px;
+        }
+
+        .result-card { margin-top: 14px; background: #ffffff; border: 1px solid var(--accent); border-radius: 14px; padding: 14px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+        .result-title { font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: #e1efe6; color: var(--primary); margin-bottom: 6px; }
+        .loading-spinner { text-align: center; font-size: 13px; color: var(--primary); padding: 20px; font-weight: 600; }
+        .recipe-section { margin-top: 10px; }
+        .recipe-section h4 { font-size: 12px; color: var(--primary); margin-bottom: 4px; }
+        .recipe-section li { margin-bottom: 3px; }
+
+        /* ===== КАЛОРИИ / КАМЕРА ===== */
+        .seg { display: flex; gap: 6px; margin-bottom: 10px; }
+        .seg button { flex: 1; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--border); background: #f0f4f1; font-size: 12px; font-weight: 600; color: var(--text-dark); cursor: pointer; }
+        .seg button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .profile-row { display: flex; gap: 6px; }
+        .profile-row input { margin-bottom: 10px; }
+        .cam-box { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #1f2a24; border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
+        .cam-box video, .cam-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .cam-box svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+        .cam-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #cfe0d6; font-size: 11px; padding: 0 16px; }
+        .btn-row { display: flex; gap: 6px; }
+        .btn-row button { flex: 1; }
+        button.btn-secondary { width: 100%; padding: 11px; background: #edf2ee; color: var(--primary); border: 1px solid var(--border); border-radius: 10px; font-weight: 600; font-size: 12px; cursor: pointer; margin-top: 8px; }
+        .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+        .macro { background: #f3f7f4; border-radius: 10px; padding: 8px 4px; text-align: center; }
+        .macro b { display: block; font-size: 15px; color: var(--primary); }
+        .macro span { font-size: 10px; color: var(--text-muted); }
+        table.items { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+        table.items th, table.items td { padding: 4px 3px; border-bottom: 1px solid var(--border); text-align: right; }
+        table.items th:first-child, table.items td:first-child { text-align: left; }
+        .bar { height: 6px; background: #e6ece8; border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
+        .bar i { display: block; height: 100%; background: var(--accent); }
+        .bar i.over { background: var(--danger); }
+        .bar-label { display: flex; justify-content: space-between; font-size: 11px; }
+        .spike { padding: 8px; border-radius: 8px; margin-top: 8px; }
+        .spike.low { background: #e9f6ee; border: 1px solid #b9e0c7; }
+        .spike.medium { background: #fff8eb; border: 1px solid #ffe3b3; }
+        .spike.high { background: #fdecec; border: 1px solid #f3baba; }
+        .doubt { background: #f4f1fb; border: 1px solid #ddd3f3; border-radius: 8px; padding: 8px; margin-top: 8px; }
+        .chips-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .chips-row button { font-size: 11px; padding: 5px 9px; border-radius: 14px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+        .chips-row button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .oil-box { background: #fffbea; border: 1px solid #f2e2a0; border-radius: 8px; padding: 8px; margin-top: 8px; }
+        .plan-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: #fafcfa; }
+        .plan-card summary { font-size: 13px; font-weight: 700; color: var(--primary); cursor: pointer; }
+        .plan-card summary span { font-weight: 500; font-size: 11px; color: var(--text-muted); }
+        .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-top: 10px; }
+        .plan-grid label { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+        .plan-grid input, .plan-grid select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; margin: 3px 0 8px; background: #fff; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+        .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+        .tag.ok { background: #e1efe6; color: #2f6b47; } .tag.warn { background: #fff1d6; color: #8a5a00; } .tag.bad { background: #fde2e2; color: #a83232; }
+        .advice { font-size: 11px; padding-left: 16px; margin-top: 4px; }
+        .advice li { margin-bottom: 3px; }
+        .reminder-banner { background: #fff8eb; border: 1px solid #ffe3b3; color: #664d00; border-radius: 10px; padding: 8px 10px; font-size: 11px; margin-bottom: 10px; display: none; }
+        .content { padding: 16px; }
+    </style>
+</head>
+<body>
+
+<div class="phone-mockup">
+    <div class="header" onclick="toggleApiPanel()">
+        <h1>🍽 Калории по фото</h1>
+        <p>БЖУ · сахар · скрытые жиры · витамины</p>
+    </div>
+
+    <!-- Панель ключа -->
+    <div id="apiPanel" class="api-panel">
+        <input type="password" id="apiKeyInput" placeholder="Введите API ключ Gemini..." onchange="saveApiKey()">
+    </div>
+
+    <div class="content">
+        <div id="reminderBanner" class="reminder-banner"></div>
+
+        <div class="section-label" style="margin-top:0;">Кто пользуется приложением?</div>
+        <div class="seg" id="genderSeg">
+            <button data-v="female" onclick="setProfile('gender', 'female')">👩 Женщина</button>
+            <button data-v="male" onclick="setProfile('gender', 'male')">👨 Мужчина</button>
+        </div>
+        <details class="plan-card" id="planCard">
+            <summary>🎯 Мой план <span id="planSummary"></span></summary>
+            <div class="plan-grid">
+                <label>Возраст<input type="text" inputmode="numeric" id="pAge" placeholder="лет" onchange="setProfile('age', this.value)"></label>
+                <label>Рост<input type="text" inputmode="decimal" id="pHeight" placeholder="см" onchange="setProfile('height', this.value)"></label>
+                <label>Вес сейчас<input type="text" inputmode="decimal" id="pWeight" placeholder="кг" onchange="setProfile('weight', this.value)"></label>
+                <label>Талия<input type="text" inputmode="decimal" id="pWaist" placeholder="см" onchange="setProfile('waist', this.value)"></label>
+                <label>Цель — вес<input type="text" inputmode="decimal" id="pTarget" placeholder="кг" onchange="setProfile('target', this.value)"></label>
+                <label>Активность
+                    <select id="pActivity" onchange="setProfile('activity', this.value)">
+                        <option value="1.2">Сидячая</option>
+                        <option value="1.375">Лёгкая (1–3 трен./нед.)</option>
+                        <option value="1.55">Средняя (3–5 трен./нед.)</option>
+                        <option value="1.725">Высокая (6–7 трен./нед.)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="section-label">Темп</div>
+            <div class="seg" id="paceSeg">
+                <button data-v="soft" onclick="setProfile('pace', 'soft')">🐢 Мягкий</button>
+                <button data-v="normal" onclick="setProfile('pace', 'normal')">🚶 Обычный</button>
+                <button data-v="fast" onclick="setProfile('pace', 'fast')">🏃 Быстрый</button>
+            </div>
+            <div id="planBody"></div>
+        </details>
+
+        <details class="plan-card" id="activityCard">
+            <summary>⌚ Активность сегодня <span id="activitySummary"></span></summary>
+            <div id="activityBody" style="margin-top:8px;"></div>
+            <div id="ouraRow"></div>
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="pasteActivity()">📋 Вставить из Здоровья</button>
+                <button class="btn-secondary" onclick="toggleManualActivity()">✏️ Ввести вручную</button>
+            </div>
+            <div id="manualActivity" style="display:none; margin-top:8px;">
+                <div class="plan-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                    <label>Шаги<input type="text" inputmode="numeric" id="aSteps"></label>
+                    <label>Активные ккал<input type="text" inputmode="numeric" id="aActive"></label>
+                    <label>Трениров., мин<input type="text" inputmode="numeric" id="aExercise"></label>
+                </div>
+                <button class="btn-primary" style="margin-top:0;" onclick="saveManualActivity()">Сохранить</button>
+            </div>
+            <details style="margin-top:10px;">
+                <summary style="font-size:11px; font-weight:600;">Как подключить Apple Здоровье и кольцо Oura</summary>
+                <div style="font-size:11px; line-height:1.55; margin-top:6px;">
+                    <p>Веб-приложение не может само читать Apple Здоровье — это доступно только приложениям из App Store. Поэтому данные передаёт команда iPhone: один раз настроить, дальше одно нажатие или автоматически.</p>
+                    <p style="margin-top:6px;"><b>💍 Кольцо Oura напрямую (автоматически):</b></p>
+                    <ol style="padding-left:16px;">
+                        <li>Откройте <b>developer.ouraring.com</b> → My Applications → создайте приложение.</li>
+                        <li>В поле Redirect URI укажите адрес этого приложения: <code id="ouraRedirect"></code></li>
+                        <li>Скопируйте <b>Client ID</b> сюда и нажмите «Подключить Oura»:</li>
+                    </ol>
+                    <input type="text" id="ouraClientId" placeholder="Client ID приложения Oura" onchange="localStorage.setItem('oura_client_id', this.value.trim())">
+                    <p style="color:var(--text-muted);">Или вставьте готовый токен доступа (Personal Access Token), если он у вас есть:</p>
+                    <input type="password" id="ouraTokenInput" placeholder="Токен Oura" onchange="saveOuraToken(this.value)">
+                    <p style="margin-top:6px;"><b>💍 Или через Apple Здоровье:</b> в приложении Oura → Профиль → Настройки → Приложения и интеграции → <b>Apple Здоровье</b> → разрешите запись шагов, активности и тренировок. Тогда данные кольца попадут в Здоровье и дальше в это приложение.</p>
+                    <p style="margin-top:6px;"><b>📱 Команда в приложении «Команды»</b> (Shortcuts) → «+» → назовите «Калории: активность» и добавьте действия:</p>
+                    <ol style="padding-left:16px;">
+                        <li><b>Найти образцы здоровья</b>: тип «Шаги», дата начала — «Сегодня». Затем <b>Вычислить статистику</b> → «Сумма».</li>
+                        <li>То же для «Активная энергия» (сумма) и «Минуты упражнений» (сумма).</li>
+                        <li><b>Текст</b>: <code>steps=</code>[сумма шагов]<code>&amp;active=</code>[сумма энергии]<code>&amp;exercise=</code>[сумма минут]</li>
+                        <li><b>Скопировать в буфер обмена</b> (этот текст).</li>
+                        <li><b>Открыть URL-адреса</b>: <code id="healthUrl"></code>[Текст]</li>
+                    </ol>
+                    <p style="margin-top:6px;">Если приложение открывается в Safari — данные подтянутся сами. Если оно установлено на экран «Домой», откройте его и нажмите <b>«📋 Вставить из Здоровья»</b>.</p>
+                    <p style="margin-top:6px;"><b>⏰ Автоматически:</b> Команды → Автоматизация → «Время суток», например 13:00 и 19:00 → запустить эту команду → «Запускать сразу».</p>
+                    <p style="margin-top:6px; color:var(--text-muted);">Названия пунктов могут немного отличаться в разных версиях iOS.</p>
+                </div>
+            </details>
+        </details>
+
+        <div class="section-label">Как сфотографировать:</div>
+        <div style="font-size:11px; line-height:1.5; margin-bottom:8px;">
+            ✋ <b>Левую руку</b> положите ровно над тарелкой, большой палец — вдоль края тарелки.<br>
+            🥄 <b>Столовую ложку</b> положите под тарелкой. Налейте в неё столько масла, сколько добавили в блюдо (по умолчанию считается оливковое). Сливочное масло можно положить кусочком рядом.
+        </div>
+
+        <div class="section-label">Сфотографируйте тарелку:</div>
+        <div class="cam-box" id="camBox">
+            <video id="camVideo" playsinline muted style="display:none;"></video>
+            <img id="camPhoto" alt="" style="display:none;">
+            <div class="cam-hint" id="camHint">Рука сверху, тарелка в центре, ложка с маслом снизу — по ним определяется размер порции</div>
+            <svg class="overlay" id="camOverlay" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
+                <!-- левая рука ладонью вниз, пальцы вправо, большой палец вдоль края тарелки -->
+                <g id="handShape" opacity="0.38" fill="#ffffff">
+                    <rect x="-30" y="44" width="140" height="74" rx="26"/>
+                    <rect x="90" y="47" width="78" height="14" rx="7"/>
+                    <rect x="95" y="62" width="95" height="15" rx="7.5"/>
+                    <rect x="95" y="78" width="103" height="15" rx="7.5"/>
+                    <rect x="95" y="94" width="94" height="15" rx="7.5"/>
+                    <rect x="70" y="104" width="78" height="16" rx="8" transform="rotate(4 70 112)"/>
+                </g>
+                <!-- тарелка -->
+                <circle cx="168" cy="222" r="96" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.8"/>
+                <circle cx="168" cy="222" r="68" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="4 6" opacity="0.5"/>
+                <!-- столовая ложка под тарелкой, черпак справа -->
+                <g opacity="0.38" fill="#ffffff">
+                    <rect x="55" y="341" width="130" height="8" rx="4" transform="rotate(-3 120 345)"/>
+                    <ellipse cx="210" cy="340" rx="27" ry="14"/>
+                </g>
+                <ellipse cx="212" cy="340" rx="17" ry="8" fill="#f2c94c" opacity="0.6"/>
+                <text x="60" y="36" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">левая рука</text>
+                <text x="168" y="226" fill="#fff" font-size="11" text-anchor="middle" opacity="0.7">тарелка</text>
+                <text x="120" y="330" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">ложка + масло</text>
+            </svg>
+        </div>
+        <div class="btn-row">
+            <button class="btn-secondary" id="camBtn" onclick="toggleCamera()">📷 Открыть камеру</button>
+            <button class="btn-secondary" onclick="document.getElementById('photoFile').click()">🖼 Из галереи</button>
+        </div>
+        <input type="file" id="photoFile" accept="image/*" capture="environment" style="display:none;" onchange="loadPhotoFile(this)">
+
+        <div class="section-label">Уточнение (по желанию):</div>
+        <div class="profile-row">
+            <input type="text" id="mealNote" placeholder="Например: это гречка с курицей, соус сметанный">
+            <button class="btn-secondary" style="width:auto; margin-top:0; margin-bottom:10px; padding:0 12px;" onclick="dictateNote()" title="Надиктовать">🎤</button>
+        </div>
+        <button class="btn-primary" style="margin-top:0;" onclick="analyzePlate()">🔬 Анализировать тарелку</button>
+
+        <div id="calResult"></div>
+
+        <div class="result-card" id="dayCard">
+            <div class="result-title">📅 Сегодня</div>
+            <div id="dayBody"></div>
+            <button class="btn-secondary" onclick="clearDay()">Очистить дневник за день</button>
+        </div>
+
+        <p style="font-size:10px; color:var(--text-muted); text-align:center; margin-top:14px; line-height:1.5;">
+            Приложение бесплатное. Оценки приблизительные и не заменяют консультацию врача.<br>
+            <a href="privacy.html" style="color:var(--primary);">Конфиденциальность и условия</a>
+        </p>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedKey = localStorage.getItem('gemini_api_key');
+        if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
+        else toggleApiPanel(); // без ключа сразу открываем панель ввода
+        initCalories();
+    });
+
+    function toggleApiPanel() {
+        const panel = document.getElementById('apiPanel');
+        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function saveApiKey() {
+        const key = document.getElementById('apiKeyInput').value.trim();
+        localStorage.setItem('gemini_api_key', key);
+    }
+
+    async function callGemini(promptText, extraParts = [], generationConfig = null) {
+        const apiKey = localStorage.getItem('gemini_api_key') || document.getElementById('apiKeyInput').value.trim();
+        if (!apiKey) {
+            alert('Пожалуйста, нажмите на шапку приложения вверху, чтобы ввести API-ключ!');
+            toggleApiPanel();
+            return null;
+        }
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: promptText }, ...extraParts] }],
+                    ...(generationConfig ? { generationConfig } : {})
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) {
+                alert('Ошибка: ' + data.error.message);
+                return null;
+            }
+            return data.candidates[0].content.parts[0].text;
+        } catch (err) {
+            alert('Ошибка соединения: ' + err.message);
+            return null;
+        }
+    }
+
+    // Средние размеры эталонов, по которым модель оценивает масштаб тарелки
+    const HAND_SIZES = {
+        female: 'женская кисть: длина ~17–18 см (от запястья до кончика среднего пальца), ширина ладони ~7,5–8 см, кулак ~8 × 9 см',
+        male: 'мужская кисть: длина ~19–20 см (от запястья до кончика среднего пальца), ширина ладони ~8,5–9 см, кулак ~9 × 10 см'
+    };
+    const SPOON_SIZE = 'столовая ложка: длина ~18–19 см, черпак ~4,5 × 6 см, полная ложка вмещает 15 мл';
+    const SPOON_ML = 15;
+    // Масла: плотность г/мл, доля жира, ккал на 100 г
+    const OILS = {
+        sunflower: { name: 'Подсолнечное', density: 0.92, fat: 1, kcal: 899 },
+        olive:     { name: 'Оливковое',    density: 0.91, fat: 1, kcal: 898 },
+        linseed:   { name: 'Льняное',      density: 0.93, fat: 1, kcal: 898 },
+        coconut:   { name: 'Кокосовое',    density: 0.92, fat: 1, kcal: 899 },
+        ghee:      { name: 'Топлёное (гхи)', density: 0.91, fat: 0.99, kcal: 892 },
+        butter:    { name: 'Сливочное (растопл.)', density: 0.91, fat: 0.82, kcal: 748 }
+    };
+    const DEFAULT_OIL = 'olive'; // если вид масла не указан
+    const BUTTER = { fat: 0.82, kcal: 748 }; // сливочное масло кусочком, на 100 г
+    const BUTTER_CHOICES = [0, 5, 10, 15, 20, 30];
+    const FILLS = [[1, 'Полная'], [0.75, '¾'], [0.5, '½'], [0.33, '⅓'], [0.25, '¼'], [0, 'Нет масла']];
+    const MEAL_INTERVAL_HOURS = 4.5; // между приёмами пищи
+    const REMINDER_LEAD_MIN = 30;    // напоминание за 30 минут, т.е. через 4 часа
+
+    let profile = { gender: 'female', age: '', weight: '', height: '', waist: '', target: '', activity: '1.375', pace: 'normal' };
+    let camStream = null;
+    let photoData = null; // { mime, base64 }
+    let lastAnalysis = null;
+    let reminderTimer = null;
+
+    function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+    function r0(v) { return Math.round(num(v)); }
+
+    function initCalories() {
+        try { Object.assign(profile, JSON.parse(localStorage.getItem('ce_profile') || '{}')); } catch (e) {}
+        document.getElementById('pAge').value = profile.age || '';
+        document.getElementById('pWeight').value = profile.weight || '';
+        document.getElementById('pHeight').value = profile.height || '';
+        document.getElementById('pWaist').value = profile.waist || '';
+        document.getElementById('pTarget').value = profile.target || '';
+        document.getElementById('pActivity').value = profile.activity || '1.375';
+        // Пока план не заполнен — держим карточку открытой
+        document.getElementById('planCard').open = !getPlan().complete;
+        renderProfile();
+        renderDay();
+        importActivityFromUrl();
+        autoSyncOura();
+        renderActivity();
+        restoreReminder();
+    }
+
+    function setProfile(key, value) {
+        profile[key] = String(value).replace(',', '.');
+        localStorage.setItem('ce_profile', JSON.stringify(profile));
+        renderProfile();
+        renderDay();
+    }
+
+    function renderProfile() {
+        document.querySelectorAll('#genderSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.gender));
+        // Женская рука на рамке чуть меньше мужской (масштаб от запястья у левого края)
+        const s = profile.gender === 'male' ? 1 : 0.88;
+        document.getElementById('handShape').setAttribute('transform', `translate(0 ${118 * (1 - s)}) scale(${s})`);
+        document.querySelectorAll('#paceSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.pace));
+        renderPlan();
+        renderActivity();
+    }
+
+    // ---------- Активность (Apple Здоровье / Oura через команду iPhone) ----------
+    // Локальная дата: toISOString() дал бы дату по UTC и после полуночи «вчера»
+    function localDate(d = new Date()) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    function activityKey() { return 'ce_activity_' + localDate(); }
+    function getActivity() { try { return JSON.parse(localStorage.getItem(activityKey()) || 'null'); } catch (e) { return null; } }
+
+    // Разбирает "steps=8432&active=512,5&exercise=45" — так текст отдаёт команда iPhone (числа бывают с пробелами и запятой)
+    function parseActivity(text) {
+        const get = key => {
+            const m = String(text).match(new RegExp(key + '=([\\d\\s\\u00a0.,]+)'));
+            return m ? Math.round(parseFloat(m[1].replace(/[\s ]/g, '').replace(',', '.'))) || 0 : null;
+        };
+        const data = { steps: get('steps'), active: get('active'), exercise: get('exercise') };
+        return Object.values(data).some(v => v !== null) ? data : null;
+    }
+
+    function saveActivity(data, source) {
+        const clean = { steps: data.steps || 0, active: data.active || 0, exercise: data.exercise || 0, source, time: new Date().toTimeString().slice(0, 5) };
+        localStorage.setItem(activityKey(), JSON.stringify(clean));
+        renderActivity();
+        renderProfile();
+        renderDay();
+    }
+
+    async function pasteActivity() {
+        let text = '';
+        try { text = await navigator.clipboard.readText(); } catch (e) {}
+        if (!text) text = prompt('Вставьте текст из команды (steps=…&active=…&exercise=…):') || '';
+        const data = parseActivity(text);
+        if (!data) { alert('Не нашёл данных. Сначала запустите команду «Калории: активность».'); return; }
+        saveActivity(data, 'Apple Здоровье');
+    }
+
+    function toggleManualActivity() {
+        const box = document.getElementById('manualActivity');
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        const a = getActivity() || {};
+        document.getElementById('aSteps').value = a.steps || '';
+        document.getElementById('aActive').value = a.active || '';
+        document.getElementById('aExercise').value = a.exercise || '';
+    }
+
+    function saveManualActivity() {
+        saveActivity({
+            steps: r0(document.getElementById('aSteps').value.replace(/\s/g, '')),
+            active: r0(document.getElementById('aActive').value),
+            exercise: r0(document.getElementById('aExercise').value)
+        }, 'вручную');
+        document.getElementById('manualActivity').style.display = 'none';
+    }
+
+    // ---------- Oura Cloud API v2 ----------
+    // Вход: OAuth2 «client-side flow» (токен приходит в #access_token) или готовый личный токен
+    const OURA_API = 'https://api.ouraring.com/v2/usercollection/';
+
+    // Один и тот же адрес и для /calories/, и для /calories/index.html — Oura требует точного совпадения Redirect URI
+    function appUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+    function ouraToken() {
+        const exp = num(localStorage.getItem('oura_token_exp'));
+        if (exp && exp < Date.now()) { localStorage.removeItem('oura_token'); return ''; }
+        return localStorage.getItem('oura_token') || '';
+    }
+
+    function saveOuraToken(token, expiresIn) {
+        token = String(token || '').trim();
+        if (!token) return;
+        localStorage.setItem('oura_token', token);
+        if (expiresIn) localStorage.setItem('oura_token_exp', String(Date.now() + num(expiresIn) * 1000));
+        else localStorage.removeItem('oura_token_exp');
+        syncOura();
+    }
+
+    function connectOura() {
+        const clientId = (document.getElementById('ouraClientId').value || localStorage.getItem('oura_client_id') || '').trim();
+        if (!clientId) {
+            document.getElementById('activityCard').open = true;
+            document.querySelector('#activityCard details').open = true;
+            alert('Сначала укажите Client ID приложения Oura (инструкция ниже).');
+            return;
+        }
+        localStorage.setItem('oura_client_id', clientId);
+        const params = new URLSearchParams({ response_type: 'token', client_id: clientId, redirect_uri: appUrl(), scope: 'daily workout', state: 'oura' });
+        location.href = 'https://cloud.ouraring.com/oauth/authorize?' + params;
+    }
+
+    function disconnectOura() {
+        localStorage.removeItem('oura_token');
+        localStorage.removeItem('oura_token_exp');
+        renderActivity();
+    }
+
+    // После входа Oura возвращает на наш адрес с #access_token=...&expires_in=...&state=oura
+    function handleOuraRedirect() {
+        if (!location.hash.includes('access_token')) return false;
+        const h = new URLSearchParams(location.hash.slice(1));
+        history.replaceState(null, '', location.pathname);
+        if (h.get('state') !== 'oura') return false;
+        saveOuraToken(h.get('access_token'), h.get('expires_in'));
+        return true;
+    }
+
+    async function ouraGet(path, token) {
+        const today = new Date();
+        const tomorrow = new Date(today.getTime() + 86400000);
+        const url = `${OURA_API}${path}?start_date=${localDate(today)}&end_date=${localDate(tomorrow)}`;
+        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+        if (res.status === 401) throw new Error('auth');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return (await res.json()).data || [];
+    }
+
+    async function syncOura(silent = false) {
+        const token = ouraToken();
+        if (!token) { renderActivity(); return; }
+        const status = document.getElementById('ouraStatus');
+        if (status) status.textContent = '🔄 Загружаю данные Oura...';
+        try {
+            const [days, workouts] = await Promise.all([ouraGet('daily_activity', token), ouraGet('workout', token)]);
+            const day = days.find(d => d.day === localDate()) || days[days.length - 1] || {};
+            const todays = workouts.filter(w => w.day === localDate());
+            let exercise = todays.reduce((acc, w) => acc + (new Date(w.end_datetime) - new Date(w.start_datetime)) / 60000, 0);
+            if (!exercise) exercise = (num(day.high_activity_time) + num(day.medium_activity_time)) / 60; // секунды → минуты
+            saveActivity({ steps: r0(day.steps), active: r0(day.active_calories), exercise: r0(exercise) }, 'кольцо Oura');
+            localStorage.setItem('oura_last_sync', String(Date.now()));
+        } catch (e) {
+            if (e.message === 'auth') {
+                disconnectOura();
+                if (!silent) alert('Доступ к Oura истёк — нажмите «Подключить Oura» ещё раз.');
+            } else if (!silent) {
+                alert('Не удалось получить данные Oura: ' + (e.message === 'Failed to fetch'
+                    ? 'браузер не пустил запрос к серверу Oura. Пока используйте путь через Apple Здоровье.'
+                    : e.message));
+            }
+            renderActivity();
+        }
+    }
+
+    // При открытии приложения — подтягиваем свежие данные, не чаще раза в 15 минут
+    function autoSyncOura() {
+        if (handleOuraRedirect()) return;
+        if (ouraToken() && Date.now() - num(localStorage.getItem('oura_last_sync')) > 15 * 60000) syncOura(true);
+    }
+
+    // Данные, пришедшие из команды через адрес ...?steps=..&active=..
+    function importActivityFromUrl() {
+        if (!location.search) return;
+        let query = location.search.replace(/\+/g, ' ');
+        try { query = decodeURIComponent(query); } catch (e) {}
+        const data = parseActivity(query);
+        if (!data) return;
+        saveActivity(data, 'Apple Здоровье');
+        history.replaceState(null, '', location.pathname);
+    }
+
+    // Активные ккал: из Здоровья, а если есть только шаги — оценка (~0,035 ккал на шаг при весе 70 кг)
+    function activeKcal(a, weight) {
+        if (!a) return 0;
+        if (a.active) return a.active;
+        return Math.round(a.steps * 0.0005 * (weight || 70));
+    }
+
+    function renderActivity() {
+        const a = getActivity();
+        document.getElementById('healthUrl').textContent = appUrl() + '?';
+        document.getElementById('ouraRedirect').textContent = appUrl();
+        const clientInput = document.getElementById('ouraClientId');
+        if (!clientInput.value) clientInput.value = localStorage.getItem('oura_client_id') || '';
+        document.getElementById('ouraRow').innerHTML = ouraToken()
+            ? `<div class="btn-row"><button class="btn-secondary" onclick="syncOura()">🔄 Обновить из Oura</button>
+               <button class="btn-secondary" onclick="disconnectOura()">Отключить Oura</button></div>
+               <p id="ouraStatus" style="font-size:10px; color:var(--text-muted); margin-top:4px;">💍 Oura подключено — данные обновляются при открытии приложения.</p>`
+            : `<button class="btn-secondary" onclick="connectOura()">💍 Подключить кольцо Oura</button>`;
+        document.getElementById('activitySummary').textContent = a ? `· ${a.steps.toLocaleString('ru-RU')} шагов · +${activeKcal(a, num(profile.weight))} ккал` : '· не подключено';
+        if (!a) {
+            document.getElementById('activityBody').innerHTML = '<p style="font-size:11px; color:var(--text-muted);">Подключите кольцо Oura или Apple Здоровье — норма калорий будет учитывать реальные шаги и тренировки.</p>';
+            return;
+        }
+        const p = getPlan();
+        document.getElementById('activityBody').innerHTML = `
+            <div class="macro-grid" style="grid-template-columns: repeat(3, 1fr); margin-top:0;">
+                <div class="macro"><b>${a.steps.toLocaleString('ru-RU')}</b><span>шагов</span></div>
+                <div class="macro"><b>${activeKcal(a, p.w)}</b><span>активных ккал${a.active ? '' : ' (оценка)'}</span></div>
+                <div class="macro"><b>${a.exercise}</b><span>мин трениров.</span></div>
+            </div>
+            <p style="font-size:10px; color:var(--text-muted);">Обновлено в ${esc(a.time)} · ${esc(a.source)}</p>
+            ${p.fromDevice ? `<p style="font-size:11px; margin-top:4px;">Норма на сегодня пересчитана по реальной активности: <b>${p.kcal} ккал</b>.</p>` : ''}`;
+    }
+
+    // ---------- План: ИМТ, цель, суточные нормы ----------
+    const PACE = { // кг в неделю
+        lose: { soft: 0.25, normal: 0.5, fast: 0.75 },
+        gain: { soft: 0.15, normal: 0.25, fast: 0.4 }
+    };
+    const KCAL_PER_KG = 7700; // энергия 1 кг массы тела
+
+    function bmiInfo(bmi) {
+        if (bmi < 18.5) return ['Недостаточный вес', 'warn'];
+        if (bmi < 25) return ['Норма', 'ok'];
+        if (bmi < 30) return ['Избыточный вес', 'warn'];
+        return ['Ожирение', 'bad'];
+    }
+
+    function getPlan() {
+        const male = profile.gender === 'male';
+        const w = num(profile.weight), h = num(profile.height), a = num(profile.age);
+        const waist = num(profile.waist), target = num(profile.target);
+        const activity = num(profile.activity) || 1.375;
+        const complete = !!(w && h && a);
+        const plan = { male, w, h, a, waist, target, complete, notes: [] };
+
+        if (!complete) {
+            // Средние значения, пока профиль не заполнен
+            plan.goal = 'maintain';
+            plan.kcal = male ? 2500 : 2000;
+            plan.refW = male ? 75 : 60;
+        } else {
+            const m = h / 100;
+            plan.bmi = w / (m * m);
+            plan.healthyMin = Math.round(18.5 * m * m);
+            plan.healthyMax = Math.round(24.9 * m * m);
+            if (waist) plan.whtr = waist / h; // отношение талии к росту
+            plan.bmr = 10 * w + 6.25 * h - 5 * a + (male ? 5 : -161);
+            plan.tdee = plan.bmr * activity;
+            // Если есть данные часов/кольца за сегодня — расход считаем по ним:
+            // базовый обмен + переваривание пищи (~15%) + активные ккал, но не ниже сидячего уровня
+            const act = getActivity();
+            if (act && (act.active || act.steps)) {
+                plan.plannedTdee = plan.tdee;
+                plan.tdee = Math.max(plan.bmr * 1.15 + activeKcal(act, w), plan.bmr * 1.2);
+                plan.fromDevice = true;
+            }
+
+            const diff = target ? target - w : 0;
+            plan.goal = Math.abs(diff) < 1 ? 'maintain' : diff < 0 ? 'lose' : 'gain';
+            plan.kcal = plan.tdee;
+            if (plan.goal !== 'maintain') {
+                const pace = PACE[plan.goal][profile.pace] || PACE[plan.goal].normal;
+                const delta = pace * KCAL_PER_KG / 7;
+                plan.kcal = plan.goal === 'lose' ? plan.tdee - delta : plan.tdee + delta;
+                // Не опускаемся ниже базового обмена и безопасного минимума
+                const floor = Math.max(plan.bmr, male ? 1500 : 1200);
+                if (plan.kcal < floor) {
+                    plan.kcal = floor;
+                    plan.notes.push('Выбранный темп слишком жёсткий — калории ограничены безопасным минимумом, похудение пойдёт медленнее.');
+                }
+                plan.paceReal = Math.abs(plan.kcal - plan.tdee) * 7 / KCAL_PER_KG;
+                plan.weeks = Math.ceil(Math.abs(diff) / plan.paceReal);
+                const targetBmi = target / (m * m);
+                if (targetBmi < 18.5) plan.notes.push(`Целевой вес ниже здоровой нормы для вашего роста (${plan.healthyMin}–${plan.healthyMax} кг). Лучше обсудить цель с врачом.`);
+            }
+            // При лишнем весе белок и жиры считаем от веса при ИМТ 25, иначе норма завышена
+            plan.refW = Math.min(w, 25 * m * m);
+        }
+        plan.kcal = Math.round(plan.kcal / 10) * 10;
+
+        const proteinPerKg = { lose: 1.6, maintain: 1.2, gain: 1.8 }[plan.goal];
+        const protein = Math.round(plan.refW * proteinPerKg);
+        const fat = Math.round(Math.max(plan.kcal * 0.3 / 9, plan.refW * 0.8));
+        plan.norms = {
+            kcal: plan.kcal,
+            protein,
+            fat,
+            carbs: Math.max(0, Math.round((plan.kcal - protein * 4 - fat * 9) / 4)),
+            sugar: male ? 36 : 25, // добавленный сахар, рекомендация ВОЗ/AHA
+            fiber: Math.max(male ? 30 : 25, Math.round(plan.kcal / 1000 * 14))
+        };
+        return plan;
+    }
+
+    function getNorms() { return getPlan().norms; }
+
+    const ru = (v, d = 1) => num(v).toFixed(d).replace('.', ',');
+
+    function goalText(p) {
+        if (p.goal === 'lose') return `похудеть до ${p.target} кг`;
+        if (p.goal === 'gain') return `набрать до ${p.target} кг`;
+        return 'поддерживать вес';
+    }
+
+    function renderPlan() {
+        const p = getPlan(), n = p.norms;
+        document.getElementById('planSummary').textContent = p.complete ? `· ${goalText(p)} · ${n.kcal} ккал` : '· заполните, чтобы рассчитать норму';
+        if (!p.complete) {
+            document.getElementById('planBody').innerHTML = '<p style="font-size:11px; color:var(--text-muted);">Укажите возраст, рост и вес — рассчитаю ИМТ и вашу норму калорий. Пока используются средние значения.</p>';
+            return;
+        }
+        const [bmiText, bmiCls] = bmiInfo(p.bmi);
+        let whtr = '';
+        if (p.whtr) {
+            const [t, c] = p.whtr < 0.5 ? ['Норма', 'ok'] : p.whtr < 0.6 ? ['Повышенный риск', 'warn'] : ['Высокий риск', 'bad'];
+            whtr = `<div class="stat-row"><span>Талия / рост</span><span>${ru(p.whtr, 2)} <span class="tag ${c}">${t}</span></span></div>`;
+        }
+        const goalLine = p.goal === 'maintain'
+            ? 'Цель: поддерживать вес — едим ровно столько, сколько тратим.'
+            : `Цель: ${goalText(p)} (${ru(Math.abs(p.target - p.w))} кг) — около ${ru(p.paceReal, 2)} кг в неделю, ≈ ${p.weeks} нед.`;
+        document.getElementById('planBody').innerHTML = `
+            <div class="stat-row"><span>ИМТ</span><span>${ru(p.bmi)} <span class="tag ${bmiCls}">${bmiText}</span></span></div>
+            ${whtr}
+            <div class="stat-row"><span>Здоровый вес для роста</span><span>${p.healthyMin}–${p.healthyMax} кг</span></div>
+            <div class="stat-row"><span>Расход ${p.fromDevice ? 'сегодня (по часам/кольцу)' : 'в день'}</span><span>${Math.round(p.tdee)} ккал</span></div>
+            <p style="font-size:11px; margin-top:8px;">${goalLine}</p>
+            <div class="macro-grid">
+                <div class="macro"><b>${n.kcal}</b><span>ккал/день</span></div>
+                <div class="macro"><b>${n.protein}</b><span>белки, г</span></div>
+                <div class="macro"><b>${n.fat}</b><span>жиры, г</span></div>
+                <div class="macro"><b>${n.carbs}</b><span>углев., г</span></div>
+            </div>
+            ${p.notes.map(t => `<p style="font-size:11px; color:#8a5a00; margin-top:4px;">⚠️ ${t}</p>`).join('')}`;
+    }
+
+    // ---------- Камера ----------
+    async function toggleCamera() {
+        if (camStream) { capturePhoto(); return; }
+        if (!navigator.mediaDevices?.getUserMedia) {
+            document.getElementById('photoFile').click();
+            return;
+        }
+        try {
+            camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false });
+            const video = document.getElementById('camVideo');
+            video.srcObject = camStream;
+            await video.play();
+            video.style.display = 'block';
+            document.getElementById('camOverlay').style.display = '';
+            document.getElementById('camPhoto').style.display = 'none';
+            document.getElementById('camHint').style.display = 'none';
+            document.getElementById('camBtn').textContent = '📸 Сделать снимок';
+        } catch (err) {
+            alert('Нет доступа к камере: ' + err.message + '\nМожно выбрать фото из галереи.');
+            camStream = null;
+        }
+    }
+
+    function stopCamera() {
+        if (camStream) camStream.getTracks().forEach(t => t.stop());
+        camStream = null;
+        document.getElementById('camVideo').style.display = 'none';
+        document.getElementById('camBtn').textContent = photoData ? '🔁 Переснять' : '📷 Открыть камеру';
+    }
+
+    function capturePhoto() {
+        const video = document.getElementById('camVideo');
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+        canvas.width = video.videoWidth * scale;
+        canvas.height = video.videoHeight * scale;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        setPhoto(canvas.toDataURL('image/jpeg', 0.85));
+        stopCamera();
+    }
+
+    function loadPhotoFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            setPhoto(canvas.toDataURL('image/jpeg', 0.85));
+            URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(file);
+        input.value = '';
+        stopCamera();
+    }
+
+    function setPhoto(dataUrl) {
+        const [head, base64] = dataUrl.split(',');
+        photoData = { mime: head.match(/data:(.*?);/)[1], base64 };
+        const img = document.getElementById('camPhoto');
+        img.src = dataUrl;
+        img.style.display = 'block';
+        document.getElementById('camHint').style.display = 'none';
+        document.getElementById('camOverlay').style.display = 'none'; // рамка нужна только при съёмке
+        document.getElementById('camBtn').textContent = '🔁 Переснять';
+    }
+
+    // ---------- Голос ----------
+    function dictateNote() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { alert('Голосовой ввод не поддерживается этим браузером'); return; }
+        const rec = new SR();
+        rec.lang = 'ru-RU';
+        rec.onresult = e => {
+            const field = document.getElementById('mealNote');
+            field.value = (field.value ? field.value + ', ' : '') + e.results[0][0].transcript;
+        };
+        rec.onerror = e => alert('Ошибка распознавания: ' + e.error);
+        rec.start();
+    }
+
+    function speakResult() {
+        if (!lastAnalysis || !window.speechSynthesis) return;
+        speechSynthesis.cancel();
+        const a = lastAnalysis, t = getTotals(a);
+        const text = `${a.dish || 'Блюдо'}. Примерно ${r0(t.kcal)} килокалорий: белки ${r0(t.protein)} грамм, жиры ${r0(t.fat)}, углеводы ${r0(t.carbs)}, сахар ${r0(t.sugar)} грамм. ` +
+            (a.summary || '') + ' ' + (a.glycemic?.tips?.length ? 'Совет: ' + a.glycemic.tips[0] : '');
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ru-RU';
+        speechSynthesis.speak(u);
+    }
+
+    // ---------- Анализ ----------
+    async function analyzePlate() {
+        const box = document.getElementById('calResult');
+        if (!photoData) { alert('Сначала сфотографируйте тарелку или выберите фото'); return; }
+        const note = document.getElementById('mealNote').value.trim();
+        const plan = getPlan(), norms = plan.norms;
+        box.innerHTML = '<div class="loading-spinner">🔬 Анализируем тарелку...</div>';
+
+        const prompt = `Ты нутрициолог. На фото тарелка с едой. Рядом с тарелкой лежит левая рука пользователя (ладонью вниз, большой палец вдоль края тарелки)
+и столовая ложка — эталоны масштаба:
+- ${HAND_SIZES[profile.gender]};
+- ${SPOON_SIZE}.
+Определи диаметр тарелки по руке и ложке, затем объём и вес каждого продукта. Размер кулака пользователя помогает оценить объём гарнира.
+Если рука или ложка не видны — оцени по типичной тарелке ~26 см и снизь confidence.
+
+Ложка на фото — всегда СТОЛОВАЯ (15 мл), чайная ложка не используется.
+В ложку пользователь наливает столько масла, сколько добавлено в блюдо (в кашах и гарнирах масло не видно).
+Посмотри на черпак ложки: есть ли в нём жидкость/масло и какая часть ложки заполнена (1 — полная, 0.75, 0.5 — половина, 0.33 — треть, 0.25, 0 — пустая).
+Граммы считать не нужно — приложение само переведёт долю ложки в граммы.
+Сливочное масло может лежать кусочком (на ложке, на тарелке или рядом). Оцени его вес, сравнивая с черпаком столовой ложки
+(ровная столовая ложка сливочного масла ≈ 14 г, с горкой ≈ 20 г), и верни в butter.
+НЕ включай масло из ложки и кусочек сливочного масла в items и totals — их посчитает приложение.
+Если масло уже видно в самой еде (блестит, лужица), учитывай его в items как обычно.
+${note ? `Уточнение от пользователя (доверяй ему больше, чем фото): "${note}".` : ''}
+Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}.
+Цель пользователя: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${(() => { const a = getActivity(); return a ? ` Активность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
+Суточные нормы пользователя: ${norms.kcal} ккал, белок ${norms.protein} г, жиры ${norms.fat} г, углеводы ${norms.carbs} г, добавленный сахар не более ${norms.sugar} г, клетчатка ${norms.fiber} г.
+
+Оцени гликемический скачок сахара в крови от этого блюда (например, бутерброд с белым хлебом — высокий) и дай конкретные советы, как его снизить
+(например: добавить жир/масло или белок, съесть сначала салат/овощи, поменять порядок еды, прогуляться 10 минут после еды).
+Если не уверен в составе (соус, начинка, вид мяса, масло) — задай короткие уточняющие вопросы в doubts.
+
+Ответь строго JSON без пояснений, все тексты на русском:
+{
+ "dish": "название блюда",
+ "confidence": 0-100,
+ "plate_diameter_cm": число,
+ "scale_note": "как определил размер порции",
+ "items": [{"name": "продукт", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г}],
+ "totals": {"grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г},
+ "micros": [{"name": "Витамин C", "amount": число, "unit": "мг|мкг", "percent_daily": число}],
+ "glycemic": {"level": "low|medium|high", "glycemic_load": число, "reason": "почему", "tips": ["совет"]},
+ "missing": ["чего не хватает в этой тарелке относительно сбалансированного приёма пищи"],
+ "doubts": ["уточняющий вопрос"],
+ "spoon": {"visible": true/false, "has_liquid": true/false, "fill_fraction": 0-1, "oil_guess": "sunflower|olive|linseed|coconut|ghee|butter|unknown", "note": "что видно в ложке"},
+ "butter": {"visible": true/false, "grams": число, "note": "где лежит кусочек сливочного масла"},
+ "plate_split": {"veg_fruit": % площади тарелки под овощами/зеленью/фруктами, "grains": % под крупами/хлебом/картофелем/макаронами, "protein": % под мясом/рыбой/яйцами/бобовыми/творогом, "other": % под остальным (сладкое, соусы, колбаса и т.п.)},
+ "plate_comment": "одно предложение: чем тарелка отличается от Гарвардской тарелки здорового питания",
+ "goal_advice": ["1–3 совета по этой тарелке с учётом цели пользователя: что убрать, уменьшить или добавить"],
+ "summary": "2–3 предложения итога для озвучки"
+}`;
+
+        const raw = await callGemini(prompt, [{ inline_data: { mime_type: photoData.mime, data: photoData.base64 } }], { responseMimeType: 'application/json', temperature: 0.2 });
+        if (!raw) { box.innerHTML = ''; return; }
+        try {
+            lastAnalysis = JSON.parse(raw.replace(/^```(json)?|```$/gm, '').trim());
+        } catch (e) {
+            box.innerHTML = '<div class="result-card">Не удалось разобрать ответ. Попробуйте ещё раз.</div>';
+            return;
+        }
+        const sp = lastAnalysis.spoon || {};
+        lastAnalysis.oil = {
+            fill: sp.has_liquid ? Math.min(1, Math.max(0, num(sp.fill_fraction))) : 0,
+            type: OILS[sp.oil_guess] ? sp.oil_guess : null, // вид масла лучше уточнить у пользователя
+            detected: !!sp.has_liquid,
+            note: sp.note || ''
+        };
+        const bt = lastAnalysis.butter || {};
+        lastAnalysis.butter = { grams: bt.visible ? Math.max(0, r0(bt.grams)) : 0, detected: !!bt.visible, note: bt.note || '' };
+        renderAnalysis(lastAnalysis);
+    }
+
+    function oilNutrition(oil) {
+        if (!oil || !oil.fill) return null;
+        const o = OILS[oil.type || DEFAULT_OIL];
+        const grams = SPOON_ML * oil.fill * o.density;
+        return { grams, fat: grams * o.fat, kcal: grams * o.kcal / 100, name: o.name };
+    }
+
+    // Итоги тарелки + масло из ложки
+    function getTotals(a) {
+        const t = { ...(a.totals || {}) };
+        [oilNutrition(a.oil), butterNutrition(a.butter)].forEach(extra => {
+            if (!extra) return;
+            t.grams = num(t.grams) + extra.grams;
+            t.fat = num(t.fat) + extra.fat;
+            t.kcal = num(t.kcal) + extra.kcal;
+        });
+        return t;
+    }
+
+    function butterNutrition(butter) {
+        const grams = num(butter?.grams);
+        if (!grams) return null;
+        return { grams, fat: grams * BUTTER.fat, kcal: grams * BUTTER.kcal / 100 };
+    }
+
+    function setButter(grams) {
+        if (!lastAnalysis) return;
+        lastAnalysis.butter = { ...lastAnalysis.butter, grams, note: '' };
+        renderAnalysis(lastAnalysis);
+    }
+
+    function renderButter(a) {
+        const b = a.butter || {};
+        const n = butterNutrition(b);
+        const chips = BUTTER_CHOICES.map(g =>
+            `<button class="${num(b.grams) === g ? 'active' : ''}" onclick="setButter(${g})">${g ? g + ' г' : 'Нет'}</button>`).join('');
+        return `<div class="oil-box">
+            <h4 style="font-size:12px;">🧈 Сливочное масло кусочком${b.detected ? ': видно ~' + r0(b.grams) + ' г' : ''}</h4>
+            ${b.note ? `<p style="font-size:10px; color:var(--text-muted);">${esc(b.note)}</p>` : ''}
+            ${n ? `<p style="font-size:11px; margin-top:4px;">+ <b>${n.fat.toFixed(1)} г жиров</b>, ${r0(n.kcal)} ккал (уже добавлено в итог)</p>` : ''}
+            <div style="font-size:10px; margin-top:6px;">${b.detected ? 'Поправьте, если не так:' : 'Добавляли сливочное масло? (по желанию)'}</div>
+            <div class="chips-row">${chips}</div>
+        </div>`;
+    }
+
+    function setOil(key, value) {
+        if (!lastAnalysis) return;
+        lastAnalysis.oil[key] = value;
+        if (key === 'fill') lastAnalysis.oil.note = ''; // подсказка модели больше не актуальна
+        renderAnalysis(lastAnalysis);
+    }
+
+    function renderOil(a) {
+        const oil = a.oil || {};
+        const n = oilNutrition(oil);
+        const fills = FILLS.map(([v, label]) =>
+            `<button class="${Math.abs(oil.fill - v) < 0.05 ? 'active' : ''}" onclick="setOil('fill', ${v})">${label}</button>`).join('');
+        const types = Object.entries(OILS).map(([k, o]) =>
+            `<button class="${oil.type === k ? 'active' : ''}" onclick="setOil('type', '${k}')">${o.name}</button>`).join('');
+        const head = oil.detected
+            ? `🥄 В ложке масло: ${FILLS.find(([v]) => Math.abs(oil.fill - v) < 0.05)?.[1] || Math.round(oil.fill * 100) + '%'} ложки`
+            : '🥄 Масла в ложке не видно';
+        return `<div class="oil-box">
+            <h4 style="font-size:12px;">${head}</h4>
+            ${oil.note ? `<p style="font-size:10px; color:var(--text-muted);">${esc(oil.note)}</p>` : ''}
+            ${n ? `<p style="font-size:11px; margin-top:4px;">+ <b>${n.grams.toFixed(1)} г</b> масла (${n.name.toLowerCase()}) = <b>${n.fat.toFixed(1)} г жиров</b>, ${r0(n.kcal)} ккал (уже добавлено в итог)</p>` : ''}
+            <div style="font-size:10px; margin-top:6px;">Сколько масла в ложке? Поправьте, если не так:</div>
+            <div class="chips-row">${fills}</div>
+            ${oil.fill ? `<div style="font-size:10px; margin-top:6px;">${oil.type ? 'Какое масло:' : '❓ Какое это масло? (по желанию, иначе считаем как оливковое)'}</div>
+            <div class="chips-row">${types}</div>` : ''}
+        </div>`;
+    }
+
+    // Гарвардская тарелка здорового питания: ½ овощи и фрукты, ¼ цельные злаки, ¼ полезный белок
+    const HARVARD = [
+        ['veg_fruit', '🥦 Овощи и фрукты', 50],
+        ['grains', '🌾 Цельные злаки', 25],
+        ['protein', '🍗 Белок', 25],
+        ['other', '🍰 Остальное', 0]
+    ];
+
+    function renderHarvard(a) {
+        const sp = a.plate_split;
+        if (!sp) return '';
+        const total = HARVARD.reduce((acc, [k]) => acc + num(sp[k]), 0) || 100;
+        const share = k => Math.round(num(sp[k]) / total * 100);
+        // Совпадение: 100% минус половина суммы отклонений от идеала
+        const match = Math.max(0, 100 - Math.round(HARVARD.reduce((acc, [k, , ideal]) => acc + Math.abs(share(k) - ideal), 0) / 2));
+        const rows = HARVARD.map(([k, label, ideal]) => {
+            const v = share(k), off = Math.abs(v - ideal) > 10;
+            return `<div class="bar-label"><span>${label}</span><span>${v}% <span style="color:var(--text-muted)">· норма ${ideal}%</span></span></div>
+                <div class="bar" style="position:relative;"><i class="${off ? 'over' : ''}" style="width:${v}%"></i>${ideal ? `<b style="position:absolute; top:-2px; left:${ideal}%; width:2px; height:10px; background:var(--primary);"></b>` : ''}</div>`;
+        }).join('');
+        return `<div class="recipe-section">
+            <h4>🎯 Гарвардская тарелка: совпадение ${match}%</h4>
+            ${rows}
+            ${a.plate_comment ? `<p style="font-size:11px; margin-top:2px;">${esc(a.plate_comment)}</p>` : ''}
+            <p style="font-size:10px; color:var(--text-muted); margin-top:2px;">Идеал Гарвардской школы общественного здравоохранения: ½ — овощи и фрукты (больше овощей), ¼ — цельные злаки, ¼ — полезный белок, плюс полезные масла и вода.</p>
+        </div>`;
+    }
+
+    // Сколько этот приём пищи занимает от дневной нормы (из расчёта 3 приёма в день)
+    function renderMealVsPlan(a, t) {
+        const p = getPlan(), n = p.norms;
+        const mealKcal = Math.round(n.kcal / 3 / 10) * 10;
+        const pct = Math.round(num(t.kcal) / n.kcal * 100);
+        const rows = [['protein', 'Белки'], ['fat', 'Жиры'], ['carbs', 'Углеводы']].map(([k, label]) =>
+            `<div class="stat-row"><span>${label}</span><span>${r0(t[k])} г · ${Math.round(num(t[k]) / n[k] * 100)}% дневной нормы</span></div>`).join('');
+        return `<div class="recipe-section">
+            <h4>🎯 Для вашей цели (${goalText(p)}):</h4>
+            <div class="stat-row"><span>Калории</span><span>${r0(t.kcal)} из ${n.kcal} ккал · ${pct}%</span></div>
+            ${rows}
+            <p style="font-size:10px; color:var(--text-muted); margin-top:4px;">Ориентир на один приём: ~${mealKcal} ккал${num(t.kcal) > mealKcal * 1.25 ? ' — эта тарелка больше ориентира' : ''}.</p>
+            ${a.goal_advice?.length ? `<ul class="advice">${a.goal_advice.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+        </div>`;
+    }
+
+    function renderAnalysis(a) {
+        const t = getTotals(a);
+        const norms = getNorms();
+        const level = ['low', 'medium', 'high'].includes(a.glycemic?.level) ? a.glycemic.level : 'medium';
+        const levelText = { low: '🟢 Низкий', medium: '🟡 Средний', high: '🔴 Высокий' }[level];
+        const list = arr => (arr || []).map(x => `<li>${esc(x)}</li>`).join('');
+
+        const items = (a.items || []).map(i => `<tr><td>${esc(i.name)}</td><td>${r0(i.grams)}</td><td>${r0(i.kcal)}</td><td>${r0(i.protein)}</td><td>${r0(i.fat)}</td><td>${r0(i.carbs)}</td></tr>`).join('');
+        const micros = (a.micros || []).map(m => `<li>${esc(m.name)}: ${esc(m.amount)} ${esc(m.unit)}${m.percent_daily ? ` <span style="color:var(--text-muted)">(${r0(m.percent_daily)}% нормы)</span>` : ''}</li>`).join('');
+
+        const sugar = num(t.sugar);
+        const sugarPct = Math.round(sugar / norms.sugar * 100);
+
+        document.getElementById('calResult').innerHTML = `
+        <div class="result-card">
+            <span class="badge">Уверенность ${r0(a.confidence)}%</span>
+            <div class="result-title">🍽 ${esc(a.dish)}</div>
+            <div style="font-size:11px; color:var(--text-muted);">≈ ${r0(t.grams)} г · тарелка ~${r0(a.plate_diameter_cm)} см. ${esc(a.scale_note)}</div>
+            <div class="macro-grid">
+                <div class="macro"><b>${r0(t.kcal)}</b><span>ккал</span></div>
+                <div class="macro"><b>${r0(t.protein)}</b><span>белки, г</span></div>
+                <div class="macro"><b>${r0(t.fat)}</b><span>жиры, г</span></div>
+                <div class="macro"><b>${r0(t.carbs)}</b><span>углев., г</span></div>
+            </div>
+            <table class="items">
+                <tr><th>Продукт</th><th>г</th><th>ккал</th><th>Б</th><th>Ж</th><th>У</th></tr>
+                ${items}
+            </table>
+            ${renderOil(a)}
+            ${renderButter(a)}
+
+            ${renderHarvard(a)}
+            ${renderMealVsPlan(a, t)}
+
+            <div class="recipe-section">
+                <h4>🍬 Сахар: ${sugar.toFixed(1)} г из ${norms.sugar} г в день (${sugarPct}%)</h4>
+                <div class="bar"><i class="${sugarPct > 100 ? 'over' : ''}" style="width:${Math.min(sugarPct, 100)}%"></i></div>
+            </div>
+
+            <div class="spike ${level}">
+                <h4 style="font-size:12px;">📈 Скачок сахара: ${levelText}${a.glycemic?.glycemic_load ? ` (ГН ≈ ${r0(a.glycemic.glycemic_load)})` : ''}</h4>
+                <p style="font-size:11px;">${esc(a.glycemic?.reason)}</p>
+                ${a.glycemic?.tips?.length ? `<ul style="font-size:11px; padding-left:16px; margin-top:4px;">${list(a.glycemic.tips)}</ul>` : ''}
+            </div>
+
+            ${micros ? `<div class="recipe-section"><h4>💊 Витамины и минералы:</h4><ul>${micros}</ul></div>` : ''}
+            ${a.missing?.length ? `<div class="recipe-section"><h4>⚖️ Чего не хватает:</h4><ul>${list(a.missing)}</ul></div>` : ''}
+            ${a.doubts?.length ? `<div class="doubt"><h4 style="font-size:12px;">❓ Есть сомнения — уточните по желанию:</h4><ul style="font-size:11px; padding-left:16px;">${list(a.doubts)}</ul>
+                <p style="font-size:10px; color:var(--text-muted); margin-top:4px;">Напишите ответ в поле «Уточнение» выше и нажмите «Анализировать» ещё раз.</p></div>` : ''}
+            ${a.summary ? `<p style="margin-top:8px;">${esc(a.summary)}</p>` : ''}
+
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="speakResult()">🔊 Озвучить</button>
+                <button class="btn-secondary" onclick="addToDay()">➕ В дневник</button>
+            </div>
+            <button class="btn-secondary" onclick="setReminder()">⏰ Напомнить о следующем приёме пищи</button>
+            <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">Следующий приём пищи — через 4,5 часа (белок + клетчатка), напоминание придёт за 30 минут. Оценка по фото приблизительная.</p>
+        </div>`;
+    }
+
+    // ---------- Дневник за день ----------
+    function todayKey() { return 'ce_day_' + localDate(); }
+    function getDay() { try { return JSON.parse(localStorage.getItem(todayKey()) || '[]'); } catch (e) { return []; } }
+
+    function addToDay() {
+        if (!lastAnalysis) return;
+        const day = getDay();
+        day.push({ time: new Date().toTimeString().slice(0, 5), dish: lastAnalysis.dish, totals: getTotals(lastAnalysis) });
+        localStorage.setItem(todayKey(), JSON.stringify(day));
+        renderDay();
+        // После приёма пищи сразу предлагаем напоминание о следующем
+        setReminder();
+    }
+
+    function clearDay() {
+        if (!confirm('Очистить дневник за сегодня?')) return;
+        localStorage.removeItem(todayKey());
+        renderDay();
+    }
+
+    // Что недобрано / перебрано за день и чем это закрыть
+    function dayAdvice(sum, n, plan) {
+        const out = [];
+        const kcalLeft = n.kcal - sum.kcal;
+        if (kcalLeft > 0) out.push(`<li>Осталось <b>${r0(kcalLeft)} ккал</b> на сегодня.</li>`);
+        else if (-kcalLeft > n.kcal * 0.05) {
+            const tip = plan.goal === 'lose' ? ' Для похудения следующий приём сделайте лёгким: овощи + белок, без хлеба и сладкого.'
+                : plan.goal === 'gain' ? ' Для набора это нормально, следите, чтобы перебор шёл за счёт белка.' : '';
+            out.push(`<li>Норма калорий превышена на <b>${r0(-kcalLeft)} ккал</b>.${tip}</li>`);
+        }
+
+        const pLeft = n.protein - sum.protein;
+        if (pLeft > 5) {
+            const eggs = Math.ceil(pLeft / 6); // ~6 г белка в яйце
+            const eggText = eggs <= 4 ? `, или ${eggs} ${eggs === 1 ? 'яйцо' : 'яйца'}` : '';
+            out.push(`<li>Недобрано <b>${r0(pLeft)} г белка</b> — это ≈ ${Math.round(pLeft / 0.23 / 10) * 10} г куриной грудки или рыбы${eggText}.</li>`);
+        }
+
+        const fLeft = n.fat - sum.fat;
+        if (fLeft > 5) out.push(`<li>Недобрано <b>${r0(fLeft)} г жиров</b> — ≈ ${ru(fLeft / 13.7)} ст. л. оливкового масла, половина авокадо или горсть семечек.</li>`);
+        else if (-fLeft > n.fat * 0.15) out.push(`<li>Жиров больше нормы на <b>${r0(-fLeft)} г</b> — в следующий раз меньше масла в ложке, выбирайте нежирное мясо.</li>`);
+
+        const cLeft = n.carbs - sum.carbs;
+        if (cLeft > 15) out.push(`<li>Недобрано <b>${r0(cLeft)} г углеводов</b> — ≈ ${Math.round(cLeft / 0.2 / 10) * 10} г готовой гречки или крупы, либо овощи и фрукт.</li>`);
+        else if (-cLeft > n.carbs * 0.15) out.push(`<li>Углеводов больше нормы на <b>${r0(-cLeft)} г</b> — замените гарнир на овощи в следующем приёме.</li>`);
+
+        const fbLeft = n.fiber - sum.fiber;
+        if (fbLeft > 5) out.push(`<li>Клетчатки не хватает <b>${r0(fbLeft)} г</b> — добавьте овощи, зелень, бобовые или ягоды.</li>`);
+        if (sum.sugar > n.sugar) out.push(`<li>Сахар выше нормы на <b>${r0(sum.sugar - n.sugar)} г</b> — сегодня без сладкого.</li>`);
+        return out;
+    }
+
+    function renderDay() {
+        const day = getDay();
+        const norms = getNorms();
+        const sum = { kcal: 0, protein: 0, fat: 0, carbs: 0, sugar: 0, fiber: 0 };
+        day.forEach(m => Object.keys(sum).forEach(k => sum[k] += num(m.totals[k])));
+        const rows = [
+            ['kcal', 'Калории', 'ккал'], ['protein', 'Белки', 'г'], ['fat', 'Жиры', 'г'],
+            ['carbs', 'Углеводы', 'г'], ['sugar', 'Сахар (макс.)', 'г'], ['fiber', 'Клетчатка', 'г']
+        ];
+        const bars = rows.map(([k, label, unit]) => {
+            const pct = Math.round(sum[k] / norms[k] * 100);
+            const over = k === 'sugar' ? pct > 100 : pct > 115;
+            return `<div class="bar-label"><span>${label}</span><span>${r0(sum[k])} / ${norms[k]} ${unit}</span></div>
+                    <div class="bar"><i class="${over ? 'over' : ''}" style="width:${Math.min(pct, 100)}%"></i></div>`;
+        }).join('');
+
+        const advice = day.length ? dayAdvice(sum, norms, getPlan()) : [];
+        const act = getActivity();
+        if (act) advice.unshift(`<li>⌚ Сегодня ${act.steps.toLocaleString('ru-RU')} шагов и ${act.exercise} мин тренировок — потрачено ещё ~${activeKcal(act, num(profile.weight))} ккал, это уже учтено в норме.</li>`);
+        const meals = day.map(m => `<li>${esc(m.time)} — ${esc(m.dish)} (${r0(m.totals.kcal)} ккал)</li>`).join('');
+
+        document.getElementById('dayBody').innerHTML = `
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">Нормы под цель: ${goalText(getPlan())}</div>
+            ${bars}
+            ${meals ? `<div class="recipe-section"><h4>🍽 Приёмы пищи:</h4><ul>${meals}</ul></div>` : '<p style="font-size:11px; color:var(--text-muted);">Пока ничего не добавлено.</p>'}
+            ${sum.sugar > norms.sugar ? `<p style="color:var(--danger); font-size:11px; margin-top:6px;">⚠️ Норма сахара на сегодня превышена.</p>` : ''}
+            ${advice.length ? `<div class="recipe-section"><h4>📋 Рекомендации на остаток дня:</h4><ul class="advice">${advice.join('')}</ul></div>` : ''}`;
+    }
+
+    // ---------- Напоминание ----------
+    // Страница не может работать, когда она закрыта, поэтому основное напоминание
+    // ставится в календарь телефона — он уведомит даже при закрытом браузере.
+    // Таймер внутри страницы — дополнительный, на случай если приложение открыто.
+    const REMINDER_TEXT = 'Через 30 минут — следующий приём пищи. Сахар будет стабильным: белок + овощи или горсть ягод.';
+
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    // at — время самого напоминания (за 30 мин до еды), meal = at + 30 мин
+    async function setReminder() {
+        const at = Date.now() + MEAL_INTERVAL_HOURS * 3600 * 1000 - REMINDER_LEAD_MIN * 60 * 1000;
+        localStorage.setItem('ce_reminder', String(at));
+        if ('Notification' in window && Notification.permission === 'default') {
+            try { await Notification.requestPermission(); } catch (e) {}
+        }
+        scheduleReminder(at);
+    }
+
+    function scheduleReminder(at) {
+        clearTimeout(reminderTimer);
+        const banner = document.getElementById('reminderBanner');
+        const meal = at + REMINDER_LEAD_MIN * 60 * 1000;
+        const hhmm = ms => new Date(ms).toTimeString().slice(0, 5);
+        banner.style.display = 'block';
+        banner.innerHTML = `⏰ Следующий приём пищи в <b>${hhmm(meal)}</b> (через ${String(MEAL_INTERVAL_HOURS).replace('.', ',')} ч), напоминание — в <b>${hhmm(at)}</b>.
+            <div style="margin-top:4px;">Чтобы напоминание пришло, даже если приложение закрыто, добавьте его в календарь телефона:</div>
+            <div class="btn-row">
+                <button class="btn-secondary" style="margin-top:6px;" onclick="downloadIcs(${at})">📅 Календарь телефона</button>
+                <button class="btn-secondary" style="margin-top:6px;" onclick="openGoogleCalendar(${at})">Google Календарь</button>
+            </div>`;
+        reminderTimer = setTimeout(fireReminder, Math.max(0, at - Date.now()));
+    }
+
+    function calStamp(ms) {
+        return new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    }
+
+    // .ics со встроенным будильником (VALARM): iPhone и Android открывают его в календаре
+    function downloadIcs(at) {
+        const meal = at + REMINDER_LEAD_MIN * 60 * 1000;
+        const ics = [
+            'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Kalorii po foto//RU', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+            'BEGIN:VEVENT',
+            `UID:${at}@kalorii-po-foto`,
+            `DTSTAMP:${calStamp(Date.now())}`,
+            `DTSTART:${calStamp(meal)}`,
+            `DTEND:${calStamp(meal + 30 * 60 * 1000)}`,
+            'SUMMARY:🍏 Приём пищи',
+            `DESCRIPTION:${REMINDER_TEXT}`,
+            'BEGIN:VALARM', 'ACTION:DISPLAY', `TRIGGER:-PT${REMINDER_LEAD_MIN}M`, 'DESCRIPTION:Через 30 минут приём пищи', 'END:VALARM',
+            'END:VEVENT', 'END:VCALENDAR'
+        ].join('\r\n');
+        const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'priem-pishchi.ics';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }
+
+    function openGoogleCalendar(at) {
+        const meal = at + REMINDER_LEAD_MIN * 60 * 1000;
+        const params = new URLSearchParams({
+            action: 'TEMPLATE',
+            text: '🍏 Приём пищи',
+            dates: `${calStamp(meal)}/${calStamp(meal + 30 * 60 * 1000)}`,
+            details: REMINDER_TEXT
+        });
+        window.open('https://calendar.google.com/calendar/render?' + params, '_blank');
+    }
+
+    async function fireReminder() {
+        localStorage.removeItem('ce_reminder');
+        document.getElementById('reminderBanner').textContent = '🍏 ' + REMINDER_TEXT;
+        if (!('Notification' in window) || Notification.permission !== 'granted') {
+            alert(REMINDER_TEXT);
+            return;
+        }
+        // На Android new Notification() запрещён — показываем через service worker
+        try {
+            const reg = await navigator.serviceWorker?.getRegistration();
+            if (reg) { reg.showNotification('Калории по фото', { body: REMINDER_TEXT }); return; }
+            new Notification('Калории по фото', { body: REMINDER_TEXT });
+        } catch (e) {
+            alert(REMINDER_TEXT);
+        }
+    }
+
+    function restoreReminder() {
+        const at = num(localStorage.getItem('ce_reminder'));
+        if (!at) return;
+        if (at > Date.now()) scheduleReminder(at);
+        else fireReminder();
+    }
+</script>
+
+</body>
+</html>
