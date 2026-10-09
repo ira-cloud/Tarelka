@@ -293,6 +293,7 @@
 
         <p style="font-size:10px; color:var(--text-muted); text-align:center; margin-top:14px; line-height:1.5;">
             Приложение бесплатное. Оценки приблизительные и не заменяют консультацию врача.<br>
+            Версия <span id="appVersion"></span> · <a href="#" onclick="updateApp(); return false;" style="color:var(--primary);">🔄 Обновить приложение</a><br>
             <a href="privacy.html" style="color:var(--primary);">Конфиденциальность и условия</a>
         </p>
     </div>
@@ -329,7 +330,18 @@
 </div>
 
 <script>
+    // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
+    const APP_VERSION = '2026-10-09 · отчёты';
+
+    // Загрузить свежую версию в обход кэша телефона
+    async function updateApp() {
+        try { (await navigator.serviceWorker?.getRegistrations() || []).forEach(r => r.update()); } catch (e) {}
+        try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) {}
+        location.replace(location.pathname + '?v=' + Date.now());
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('appVersion').textContent = APP_VERSION;
         const savedKey = localStorage.getItem('gemini_api_key');
         const groqKey = localStorage.getItem('groq_api_key');
         if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
