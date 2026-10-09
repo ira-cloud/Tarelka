@@ -314,36 +314,68 @@
         localStorage.setItem('gemini_api_key', key);
     }
 
-    async function callGemini(promptText, extraParts = [], generationConfig = null) {
+    // Основная модель и запасная: при перегрузке серверов Google (503) или исчерпании лимита (429)
+    // сначала повторяем запрос с паузой, затем переключаемся на облегчённую модель
+    const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+    const RETRY_DELAYS = [2000, 5000];
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    function geminiErrorText(status, message) {
+        if (status === 400 && /API key/i.test(message)) return 'Ключ Gemini не подходит. Проверьте, что он скопирован полностью (начинается на AIza…).';
+        if (status === 403) return 'Ключ Gemini не имеет доступа. Создайте новый ключ на aistudio.google.com/apikey.';
+        if (status === 429) return 'Закончился бесплатный лимит запросов Gemini. Попробуйте через несколько минут или завтра.';
+        if (status === 503 || status === 500) return 'Серверы Gemini сейчас перегружены. Подождите минуту и нажмите «Анализировать» ещё раз.';
+        return 'Ошибка Gemini: ' + message;
+    }
+
+    async function callGemini(promptText, extraParts = [], generationConfig = null, onStatus = () => {}) {
         const apiKey = localStorage.getItem('gemini_api_key') || document.getElementById('apiKeyInput').value.trim();
         if (!apiKey) {
             alert('Пожалуйста, нажмите на шапку приложения вверху, чтобы ввести API-ключ!');
             toggleApiPanel();
             return null;
         }
+        const body = JSON.stringify({
+            contents: [{ parts: [{ text: promptText }, ...extraParts] }],
+            ...(generationConfig ? { generationConfig } : {})
+        });
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
-        
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: promptText }, ...extraParts] }],
-                    ...(generationConfig ? { generationConfig } : {})
-                })
-            });
-
-            const data = await response.json();
-            if (data.error) {
-                alert('Ошибка: ' + data.error.message);
-                return null;
+        let lastError = null;
+        for (const [m, model] of GEMINI_MODELS.entries()) {
+            if (m > 0) onStatus('Основная модель перегружена — пробую запасную…');
+            for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+                if (attempt > 0) {
+                    onStatus(`Серверы Gemini перегружены — повтор ${attempt} из ${RETRY_DELAYS.length}…`);
+                    await sleep(RETRY_DELAYS[attempt - 1]);
+                }
+                let response, data;
+                try {
+                    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+                    data = await response.json();
+                } catch (err) {
+                    lastError = { status: 0, message: err.message };
+                    continue; // сеть моргнула — пробуем ещё раз
+                }
+                if (!data.error) {
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) return text;
+                    lastError = { status: 0, message: 'пустой ответ' };
+                    continue;
+                }
+                lastError = { status: data.error.code || response.status, message: data.error.message || '' };
+                if (lastError.status === 404) break;              // модель недоступна — сразу к запасной
+                if (lastError.status === 429) break;              // лимит этой модели — к запасной, у неё свой лимит
+                if (![500, 503].includes(lastError.status)) {     // ключ, запрос и т.п. — повтор не поможет
+                    alert(geminiErrorText(lastError.status, lastError.message));
+                    return null;
+                }
             }
-            return data.candidates[0].content.parts[0].text;
-        } catch (err) {
-            alert('Ошибка соединения: ' + err.message);
-            return null;
         }
+        alert(lastError?.status === 0 && lastError.message !== 'пустой ответ'
+            ? 'Нет связи с Gemini. Проверьте интернет и попробуйте ещё раз.'
+            : geminiErrorText(lastError?.status, lastError?.message || ''));
+        return null;
     }
 
     // Средние размеры эталонов, по которым модель оценивает масштаб тарелки
@@ -886,7 +918,8 @@ ${note ? `Уточнение от пользователя (доверяй ем�
  "summary": "2–3 предложения итога для озвучки"
 }`;
 
-        const raw = await callGemini(prompt, [{ inline_data: { mime_type: photoData.mime, data: photoData.base64 } }], { responseMimeType: 'application/json', temperature: 0.2 });
+        const raw = await callGemini(prompt, [{ inline_data: { mime_type: photoData.mime, data: photoData.base64 } }], { responseMimeType: 'application/json', temperature: 0.2 },
+            msg => { box.innerHTML = `<div class="loading-spinner">⏳ ${esc(msg)}</div>`; });
         if (!raw) { box.innerHTML = ''; return; }
         try {
             lastAnalysis = JSON.parse(raw.replace(/^```(json)?|```$/gm, '').trim());
