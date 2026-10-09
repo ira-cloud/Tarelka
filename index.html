@@ -48,10 +48,6 @@
 
         .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 10px 0 6px 0; }
 
-            font-size: 10px; padding: 5px 8px; border-radius: 14px; border: 1px solid var(--border);
-            background: #f0f4f1; color: var(--text-dark); cursor: pointer; user-select: none; transition: all 0.2s;
-        }
-
         button.btn-primary {
             width: 100%; padding: 12px; background: var(--primary); color: white;
             border: none; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 8px;
@@ -134,6 +130,21 @@
         .link-btn { background: none; border: none; color: var(--danger); font-size: 11px; cursor: pointer; padding: 4px 0; }
         .alert-box { background: #fdecec; border: 1px solid #f3baba; color: #7a2626; border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 11px; }
         .day-row { display: flex; justify-content: space-between; font-size: 11px; padding: 5px 0; border-bottom: 1px dashed var(--border); }
+        .header { position: relative; }
+        .head-avatar { position: absolute; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.7); background: rgba(255,255,255,0.18); font-size: 20px; cursor: pointer; }
+        .profile-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 12px; background: #fafcfa; cursor: pointer; text-align: left; }
+        .profile-btn .avatar { width: 40px; height: 40px; border-radius: 50%; background: #e1efe6; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+        .profile-btn .profile-text { flex: 1; display: flex; flex-direction: column; font-size: 11px; color: var(--text-muted); }
+        .profile-btn .profile-text b { font-size: 13px; color: var(--primary); }
+        .profile-btn .chev { font-size: 22px; color: var(--text-muted); }
+        .sheet { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,0.4); display: none; align-items: flex-end; justify-content: center; }
+        .sheet.open { display: flex; }
+        .sheet-inner { width: 100%; max-width: 430px; max-height: 92vh; overflow-y: auto; background: #fff; border-radius: 18px 18px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
+        .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 15px; color: var(--primary); }
+        .sheet-head button { background: #edf2ee; border: none; width: 32px; height: 32px; border-radius: 16px; font-size: 15px; cursor: pointer; }
+        .full-select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; background: #fff; margin-bottom: 6px; }
+        .check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin: 6px 0; }
+        .check input { margin-top: 2px; }
         .reminder-banner { background: #fff8eb; border: 1px solid #ffe3b3; color: #664d00; border-radius: 10px; padding: 8px 10px; font-size: 11px; margin-bottom: 10px; display: none; }
         .content { padding: 16px; }
     </style>
@@ -142,6 +153,7 @@
 
 <div class="phone-mockup">
     <div class="header" onclick="toggleApiPanel()">
+        <button class="head-avatar" id="headAvatar" onclick="event.stopPropagation(); openProfile();" aria-label="Мой профиль">👩</button>
         <h1>🍽 Калории по фото</h1>
         <p>БЖУ · сахар · скрытые жиры · витамины</p>
     </div>
@@ -164,36 +176,11 @@
     <div class="content">
         <div id="reminderBanner" class="reminder-banner"></div>
 
-        <div class="section-label" style="margin-top:0;">Кто пользуется приложением?</div>
-        <div class="seg" id="genderSeg">
-            <button data-v="female" onclick="setProfile('gender', 'female')">👩 Женщина</button>
-            <button data-v="male" onclick="setProfile('gender', 'male')">👨 Мужчина</button>
-        </div>
-        <details class="plan-card" id="planCard">
-            <summary>🎯 Мой план <span id="planSummary"></span></summary>
-            <div class="plan-grid">
-                <label>Возраст<input type="text" inputmode="numeric" id="pAge" placeholder="лет" onchange="setProfile('age', this.value)"></label>
-                <label>Рост<input type="text" inputmode="decimal" id="pHeight" placeholder="см" onchange="setProfile('height', this.value)"></label>
-                <label>Вес сейчас<input type="text" inputmode="decimal" id="pWeight" placeholder="кг" onchange="setProfile('weight', this.value)"></label>
-                <label>Талия<input type="text" inputmode="decimal" id="pWaist" placeholder="см" onchange="setProfile('waist', this.value)"></label>
-                <label>Цель — вес<input type="text" inputmode="decimal" id="pTarget" placeholder="кг" onchange="setProfile('target', this.value)"></label>
-                <label>Активность
-                    <select id="pActivity" onchange="setProfile('activity', this.value)">
-                        <option value="1.2">Сидячая</option>
-                        <option value="1.375">Лёгкая (1–3 трен./нед.)</option>
-                        <option value="1.55">Средняя (3–5 трен./нед.)</option>
-                        <option value="1.725">Высокая (6–7 трен./нед.)</option>
-                    </select>
-                </label>
-            </div>
-            <div class="section-label">Темп</div>
-            <div class="seg" id="paceSeg">
-                <button data-v="soft" onclick="setProfile('pace', 'soft')">🐢 Мягкий</button>
-                <button data-v="normal" onclick="setProfile('pace', 'normal')">🚶 Обычный</button>
-                <button data-v="fast" onclick="setProfile('pace', 'fast')">🏃 Быстрый</button>
-            </div>
-            <div id="planBody"></div>
-        </details>
+        <button class="profile-btn" onclick="openProfile()">
+            <span class="avatar" id="avatarFace">👩</span>
+            <span class="profile-text"><b id="profileTitle">Мой профиль</b><span id="planSummary"></span></span>
+            <span class="chev">›</span>
+        </button>
 
         <details class="plan-card" id="activityCard">
             <summary>⌚ Активность сегодня <span id="activitySummary"></span></summary>
@@ -299,6 +286,58 @@
     </div>
 </div>
 
+
+<!-- Профиль: открывается кнопкой с лицом -->
+<div class="sheet" id="profileSheet" onclick="if (event.target === this) closeProfile()">
+    <div class="sheet-inner">
+        <div class="sheet-head"><b>👤 Мой профиль</b><button onclick="closeProfile()" aria-label="Закрыть">✕</button></div>
+
+        <div class="section-label" style="margin-top:0;">Кто пользуется приложением?</div>
+        <div class="seg" id="genderSeg">
+            <button data-v="female" onclick="setProfile('gender', 'female')">👩 Женщина</button>
+            <button data-v="male" onclick="setProfile('gender', 'male')">👨 Мужчина</button>
+        </div>
+
+        <div class="plan-grid">
+            <label>Возраст<input type="text" inputmode="numeric" id="pAge" placeholder="лет" onchange="setProfile('age', this.value)"></label>
+            <label>Рост<input type="text" inputmode="decimal" id="pHeight" placeholder="см" onchange="setProfile('height', this.value)"></label>
+            <label>Вес сейчас<input type="text" inputmode="decimal" id="pWeight" placeholder="кг" onchange="setProfile('weight', this.value)"></label>
+            <label>Талия<input type="text" inputmode="decimal" id="pWaist" placeholder="см" onchange="setProfile('waist', this.value)"></label>
+            <label>Цель — вес<input type="text" inputmode="decimal" id="pTarget" placeholder="кг" onchange="setProfile('target', this.value)"></label>
+            <label>Активность
+                <select id="pActivity" onchange="setProfile('activity', this.value)">
+                    <option value="1.2">Сидячая</option>
+                    <option value="1.375">Лёгкая (1–3 трен./нед.)</option>
+                    <option value="1.55">Средняя (3–5 трен./нед.)</option>
+                    <option value="1.725">Высокая (6–7 трен./нед.)</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="section-label">🩸 Сахар и инсулин</div>
+        <select id="pSugar" class="full-select" onchange="setProfile('sugarStatus', this.value)">
+            <option value="none">Нет проблем с сахаром</option>
+            <option value="ir">Инсулинорезистентность</option>
+            <option value="prediabetes">Преддиабет</option>
+            <option value="t2">Диабет 2 типа</option>
+            <option value="t1">Диабет 1 типа</option>
+            <option value="gestational">Гестационный диабет (при беременности)</option>
+        </select>
+        <label class="check"><input type="checkbox" id="pInsulin" onchange="setProfile('insulin', this.checked)"> Колю инсулин</label>
+        <label class="check"><input type="checkbox" id="pMeds" onchange="setProfile('meds', this.checked)"> Принимаю препараты, снижающие сахар (метформин и др.)</label>
+        <div id="sugarNote"></div>
+
+        <div class="section-label">Темп</div>
+        <div class="seg" id="paceSeg">
+            <button data-v="soft" onclick="setProfile('pace', 'soft')">🐢 Мягкий</button>
+            <button data-v="normal" onclick="setProfile('pace', 'normal')">🚶 Обычный</button>
+            <button data-v="fast" onclick="setProfile('pace', 'fast')">🏃 Быстрый</button>
+        </div>
+        <div id="planBody"></div>
+        <button class="btn-primary" onclick="closeProfile()">Готово</button>
+    </div>
+</div>
+
 <!-- Камера внутри приложения: видео + контуры руки, тарелки и ложки по образцу frame.jpg -->
 <div class="cam-modal" id="camModal">
     <div class="cam-top">
@@ -331,7 +370,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · отчёты';
+    const APP_VERSION = '2026-10-09 · профиль';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -490,7 +529,11 @@
     function isLate(d) { return d.getHours() >= LAST_MEAL_HOUR || d.getHours() < 5; }
     const REMINDER_LEAD_MIN = 30;    // напоминание за 30 минут, т.е. через 4 часа
 
-    let profile = { gender: 'female', age: '', weight: '', height: '', waist: '', target: '', activity: '1.375', pace: 'normal' };
+    let profile = { gender: 'female', age: '', weight: '', height: '', waist: '', target: '', activity: '1.375', pace: 'normal', sugarStatus: 'none', insulin: 'false', meds: 'false' };
+    const SUGAR_STATUS = {
+        none: '', ir: 'инсулинорезистентность', prediabetes: 'преддиабет', t2: 'диабет 2 типа',
+        t1: 'диабет 1 типа', gestational: 'гестационный диабет'
+    };
     let camStream = null;
     let photoData = null; // { mime, base64 }
     let lastAnalysis = null;
@@ -510,8 +553,9 @@
         document.getElementById('pWaist').value = profile.waist || '';
         document.getElementById('pTarget').value = profile.target || '';
         document.getElementById('pActivity').value = profile.activity || '1.375';
-        // Пока план не заполнен — держим карточку открытой
-        document.getElementById('planCard').open = !getPlan().complete;
+        document.getElementById('pSugar').value = profile.sugarStatus || 'none';
+        document.getElementById('pInsulin').checked = profile.insulin === 'true';
+        document.getElementById('pMeds').checked = profile.meds === 'true';
         renderProfile();
         renderDay();
         renderHistory();
@@ -528,8 +572,25 @@
         renderDay();
     }
 
+    function openProfile() {
+        document.getElementById('profileSheet').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeProfile() {
+        document.getElementById('profileSheet').classList.remove('open');
+        document.body.style.overflow = '';
+    }
+
     function renderProfile() {
         document.querySelectorAll('#genderSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.gender));
+        const face = profile.gender === 'male' ? '👨' : '👩';
+        document.getElementById('avatarFace').textContent = face;
+        document.getElementById('headAvatar').textContent = face;
+        const p = getPlan();
+        document.getElementById('profileTitle').textContent = p.complete
+            ? `${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}, ${profile.age} лет · ${profile.weight}${profile.target ? ' → ' + profile.target : ''} кг`
+            : 'Мой профиль — заполните данные';
+        document.getElementById('sugarNote').innerHTML = sugarNoteHtml();
         // Контур руки снят с женской руки; для мужчин он на ~10% больше (масштаб от запястья)
         const s = profile.gender === 'male' ? 1.1 : 1;
         document.getElementById('guideHand').setAttribute('transform', `translate(${226 * (1 - s)} ${1123 * (1 - s)}) scale(${s})`);
@@ -806,6 +867,20 @@
             sugar: male ? 36 : 25, // добавленный сахар, рекомендация ВОЗ/AHA
             fiber: Math.max(male ? 30 : 25, Math.round(plan.kcal / 1000 * 14))
         };
+        // Инсулинорезистентность, преддиабет, диабет: углеводы не больше 40% калорий
+        // (освободившиеся калории — в полезные жиры), сахар строже, клетчатки больше
+        plan.glucose = SUGAR_STATUS[profile.sugarStatus] ? profile.sugarStatus : 'none';
+        if (plan.glucose !== 'none') {
+            const carbsMax = Math.round(plan.kcal * 0.4 / 4);
+            if (plan.norms.carbs > carbsMax) {
+                plan.norms.fat += Math.round((plan.norms.carbs - carbsMax) * 4 / 9);
+                plan.norms.carbs = carbsMax;
+            }
+            plan.norms.sugar = 15;
+            plan.norms.fiber = Math.max(plan.norms.fiber, 30);
+        }
+        plan.onInsulin = profile.insulin === 'true';
+        plan.onMeds = profile.meds === 'true';
         return plan;
     }
 
@@ -817,6 +892,24 @@
         if (p.goal === 'lose') return `похудеть до ${p.target} кг`;
         if (p.goal === 'gain') return `набрать до ${p.target} кг`;
         return 'поддерживать вес';
+    }
+
+    function sugarContext(plan) {
+        if (plan.glucose === 'none' && !plan.onInsulin && !plan.onMeds) return '';
+        return [SUGAR_STATUS[plan.glucose], plan.onInsulin && 'колет инсулин', plan.onMeds && 'принимает сахароснижающие препараты'].filter(Boolean).join(', ');
+    }
+
+    // Подсказка в профиле: что меняется в расчётах и меры безопасности
+    function sugarNoteHtml() {
+        const plan = getPlan();
+        if (plan.glucose === 'none' && !plan.onInsulin && !plan.onMeds) return '';
+        const parts = [];
+        if (plan.glucose !== 'none') parts.push(`Углеводы ограничены 40% калорий (сейчас ${plan.norms.carbs} г в день), сахар — не больше ${plan.norms.sugar} г, клетчатка — от ${plan.norms.fiber} г. Анализ тарелки строже оценивает скачки сахара.`);
+        if (plan.onInsulin || ['t1', 't2', 'gestational'].includes(plan.glucose)) parts.push('Углеводы в каждой тарелке показываются и в хлебных единицах (ХЕ).');
+        const safety = plan.onInsulin || plan.onMeds
+            ? '<p style="margin-top:4px;"><b>⚠️ Приложение не рассчитывает дозы инсулина и препаратов.</b> Не пропускайте приёмы пищи и не делайте долгих перерывов без согласования с врачом — это может вызвать гипогликемию. Темп похудения и нормы обсудите с эндокринологом.</p>'
+            : '<p style="margin-top:4px;">Нормы и цель лучше согласовать с врачом-эндокринологом.</p>';
+        return `<div class="doubt" style="font-size:11px;">${parts.map(t => `<p>${t}</p>`).join('')}${safety}</div>`;
     }
 
     function renderPlan() {
@@ -978,7 +1071,8 @@
 Если масло уже видно в самой еде (блестит, лужица), учитывай его в items как обычно.
 ${note ? `Уточнение от пользователя (доверяй ему больше, чем фото): "${note}".` : ''}
 Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}.
-Цель пользователя: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${(() => { const a = getActivity(); return a ? ` Активность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
+Цель пользователя: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${sugarContext(plan) ? `
+ВАЖНО: у пользователя ${sugarContext(plan)}. Оценивай гликемический скачок строже, советы давай с учётом этого (порядок еды: овощи → белок → углеводы, меньше быстрых углеводов). Не давай советов по дозам инсулина и лекарств.` : ''}${(() => { const a = getActivity(); return a ? ` Активность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
 Суточные нормы пользователя: ${norms.kcal} ккал, белок ${norms.protein} г, жиры ${norms.fat} г, углеводы ${norms.carbs} г, добавленный сахар не более ${norms.sugar} г, клетчатка ${norms.fiber} г.
 
 Оцени гликемический скачок сахара в крови от этого блюда (например, бутерброд с белым хлебом — высокий) и дай конкретные советы, как его снизить
@@ -1191,6 +1285,11 @@ ${note ? `Уточнение от пользователя (доверяй ем�
             ${renderOil(a)}
             ${renderButter(a)}
 
+            ${(() => {
+                const pl = getPlan();
+                if (!(pl.onInsulin || ['t1', 't2', 'gestational'].includes(pl.glucose))) return '';
+                return `<div class="stat-row" style="font-size:12px;"><span>🍞 Углеводы в тарелке</span><span><b>${r0(t.carbs)} г ≈ ${ru(num(t.carbs) / 12)} ХЕ</b> <span style="color:var(--text-muted)">(1 ХЕ = 12 г)</span></span></div>`;
+            })()}
             ${renderHarvard(a)}
             ${renderMealVsPlan(a, t)}
 
@@ -1569,7 +1668,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const groups = Object.entries(sm.groupDays).map(([g, d]) => `${PRODUCT_GROUPS[g].name}: ${d} дн.`).join('; ') || 'нет';
         const allProducts = [...new Set(reports.flatMap(r => r.products))].join(', ');
         const prompt = `Ты нутрициолог. Дай рекомендации по питанию пользователя за ${period === 'week' ? 'неделю' : 'месяц'} на русском языке.
-Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}. Цель: ${goalText(plan)}.
+Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}. Цель: ${goalText(plan)}.${sugarContext(plan) ? ' Важно: ' + sugarContext(plan) + ' — учитывай это, без советов по дозам препаратов.' : ''}
 Дней с записями: ${sm.days} из ${days}.
 В среднем в день: ${r0(sm.avg.kcal)} ккал (норма ${r0(sm.norm.kcal)}), белки ${r0(sm.avg.protein)} г (норма ${r0(sm.norm.protein)}), жиры ${r0(sm.avg.fat)} г (норма ${r0(sm.norm.fat)}), углеводы ${r0(sm.avg.carbs)} г (норма ${r0(sm.norm.carbs)}), сахар ${r0(sm.avg.sugar)} г (максимум ${r0(sm.norm.sugar)}), клетчатка ${r0(sm.avg.fiber)} г (норма ${r0(sm.norm.fiber)}).
 Овощи и фрукты в среднем занимают ${sm.veg !== null ? r0(sm.veg) + '%' : 'нет данных'} тарелки (Гарвардская тарелка — 50%).
@@ -1725,8 +1824,12 @@ ${note ? `Уточнение от пользователя (доверяй ем�
     function restoreReminder() {
         const at = num(localStorage.getItem('ce_reminder'));
         if (!at) return;
+        const meal = new Date(at + REMINDER_LEAD_MIN * 60 * 1000);
+        // Напоминание на позднее время (в том числе сохранённое старой версией) — отбрасываем
+        if (meal.getHours() >= LAST_MEAL_HOUR || meal.getHours() < 6) { localStorage.removeItem('ce_reminder'); return; }
         if (at > Date.now()) scheduleReminder(at);
-        else fireReminder();
+        else if (Date.now() - at < 30 * 60 * 1000) fireReminder();   // только что пропустили — показываем
+        else localStorage.removeItem('ce_reminder');                  // давно прошло — не беспокоим
     }
 </script>
 
