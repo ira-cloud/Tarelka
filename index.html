@@ -225,7 +225,7 @@
         <div class="section-label">Как сфотографировать:</div>
         <div style="font-size:11px; line-height:1.5; margin-bottom:8px;">
             ✋ <b>Левую руку</b> положите слева от тарелки, пальцами вверх, большой палец — вдоль края тарелки.<br>
-            🥄 <b>Столовую ложку</b> положите справа от тарелки. Налейте в неё столько масла, сколько добавите в блюдо (по умолчанию считается оливковое). Сливочное масло можно положить кусочком рядом.
+            🥄 <b>Столовую ложку</b> положите справа от тарелки. Налейте в неё столько масла, сколько добавите в блюдо (по умолчанию — оливковое). Сливочное или кокосовое — положите кусочком на ложку.
         </div>
 
         <div class="section-label">Сфотографируйте тарелку:</div>
@@ -359,7 +359,11 @@
         butter:    { name: 'Сливочное (растопл.)', density: 0.91, fat: 0.82, kcal: 748 }
     };
     const DEFAULT_OIL = 'olive'; // если вид масла не указан
-    const BUTTER = { fat: 0.82, kcal: 748 }; // сливочное масло кусочком, на 100 г
+    // Твёрдое масло кусочком, на 100 г
+    const SOLID_FATS = {
+        butter:  { name: 'Сливочное', fat: 0.82, kcal: 748 },
+        coconut: { name: 'Кокосовое', fat: 1,    kcal: 899 }
+    };
     const BUTTER_CHOICES = [0, 5, 10, 15, 20, 30];
     const FILLS = [[1, 'Полная'], [0.75, '¾'], [0.5, '½'], [0.33, '⅓'], [0.25, '¼'], [0, 'Нет масла']];
     const MEAL_INTERVAL_HOURS = 4.5; // между приёмами пищи
@@ -845,9 +849,9 @@
 В ложку пользователь наливает столько масла, сколько добавит в блюдо (в кашах и гарнирах масло не видно).
 Посмотри на черпак ложки: есть ли в нём жидкость/масло и какая часть ложки заполнена (1 — полная, 0.75, 0.5 — половина, 0.33 — треть, 0.25, 0 — пустая).
 Граммы считать не нужно — приложение само переведёт долю ложки в граммы.
-Сливочное масло может лежать кусочком (на ложке, на тарелке или рядом). Оцени его вес, сравнивая с черпаком столовой ложки
-(ровная столовая ложка сливочного масла ≈ 14 г, с горкой ≈ 20 г), и верни в butter.
-НЕ включай масло из ложки и кусочек сливочного масла в items и totals — их посчитает приложение.
+Твёрдое масло — сливочное (жёлтое) или кокосовое (белое) — пользователь кладёт кусочком на ложку (иногда рядом с тарелкой).
+Оцени вес кусочка, сравнивая с черпаком столовой ложки (ровная столовая ложка ≈ 14 г, с горкой ≈ 20 г), и верни в butter, указав вид в kind.
+НЕ включай масло из ложки и кусочек твёрдого масла в items и totals — их посчитает приложение.
 Если масло уже видно в самой еде (блестит, лужица), учитывай его в items как обычно.
 ${note ? `Уточнение от пользователя (доверяй ему больше, чем фото): "${note}".` : ''}
 Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}.
@@ -871,7 +875,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
  "missing": ["чего не хватает в этой тарелке относительно сбалансированного приёма пищи"],
  "doubts": ["уточняющий вопрос"],
  "spoon": {"visible": true/false, "has_liquid": true/false, "fill_fraction": 0-1, "oil_guess": "sunflower|olive|linseed|coconut|ghee|butter|unknown", "note": "что видно в ложке"},
- "butter": {"visible": true/false, "grams": число, "note": "где лежит кусочек сливочного масла"},
+ "butter": {"visible": true/false, "kind": "butter|coconut", "grams": число, "note": "где лежит кусочек твёрдого масла"},
  "plate_split": {"veg_fruit": % площади тарелки под овощами/зеленью/фруктами, "grains": % под крупами/хлебом/картофелем/макаронами, "protein": % под мясом/рыбой/яйцами/бобовыми/творогом, "other": % под остальным (сладкое, соусы, колбаса и т.п.)},
  "plate_comment": "одно предложение: чем тарелка отличается от Гарвардской тарелки здорового питания",
  "goal_advice": ["1–3 совета по этой тарелке с учётом цели пользователя: что убрать, уменьшить или добавить"],
@@ -894,7 +898,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
             note: sp.note || ''
         };
         const bt = lastAnalysis.butter || {};
-        lastAnalysis.butter = { grams: bt.visible ? Math.max(0, r0(bt.grams)) : 0, detected: !!bt.visible, note: bt.note || '' };
+        lastAnalysis.butter = { grams: bt.visible ? Math.max(0, r0(bt.grams)) : 0, kind: SOLID_FATS[bt.kind] ? bt.kind : 'butter', detected: !!bt.visible, note: bt.note || '' };
         renderAnalysis(lastAnalysis);
     }
 
@@ -920,12 +924,13 @@ ${note ? `Уточнение от пользователя (доверяй ем�
     function butterNutrition(butter) {
         const grams = num(butter?.grams);
         if (!grams) return null;
-        return { grams, fat: grams * BUTTER.fat, kcal: grams * BUTTER.kcal / 100 };
+        const f = SOLID_FATS[butter.kind] || SOLID_FATS.butter;
+        return { grams, fat: grams * f.fat, kcal: grams * f.kcal / 100 };
     }
 
-    function setButter(grams) {
+    function setButter(key, value) {
         if (!lastAnalysis) return;
-        lastAnalysis.butter = { ...lastAnalysis.butter, grams, note: '' };
+        lastAnalysis.butter = { ...lastAnalysis.butter, [key]: value, note: '', edited: true };
         renderAnalysis(lastAnalysis);
     }
 
@@ -933,12 +938,16 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const b = a.butter || {};
         const n = butterNutrition(b);
         const chips = BUTTER_CHOICES.map(g =>
-            `<button class="${num(b.grams) === g ? 'active' : ''}" onclick="setButter(${g})">${g ? g + ' г' : 'Нет'}</button>`).join('');
+            `<button class="${num(b.grams) === g ? 'active' : ''}" onclick="setButter('grams', ${g})">${g ? g + ' г' : 'Нет'}</button>`).join('');
+        const kind = SOLID_FATS[b.kind] ? b.kind : 'butter';
+        const kinds = Object.entries(SOLID_FATS).map(([k, f]) =>
+            `<button class="${kind === k ? 'active' : ''}" onclick="setButter('kind', '${k}')">${f.name}</button>`).join('');
         return `<div class="oil-box">
-            <h4 style="font-size:12px;">🧈 Сливочное масло кусочком${b.detected ? ': видно ~' + r0(b.grams) + ' г' : ''}</h4>
+            <h4 style="font-size:12px;">🧈 ${SOLID_FATS[kind].name} масло кусочком${num(b.grams) ? (b.detected && !b.edited ? ': видно ~' : ': ') + r0(b.grams) + ' г' : ''}</h4>
             ${b.note ? `<p style="font-size:10px; color:var(--text-muted);">${esc(b.note)}</p>` : ''}
             ${n ? `<p style="font-size:11px; margin-top:4px;">+ <b>${n.fat.toFixed(1)} г жиров</b>, ${r0(n.kcal)} ккал (уже добавлено в итог)</p>` : ''}
-            <div style="font-size:10px; margin-top:6px;">${b.detected ? 'Поправьте, если не так:' : 'Добавите сливочное масло? (по желанию)'}</div>
+            <div style="font-size:10px; margin-top:6px;">${b.detected ? 'Поправьте, если не так:' : 'Добавите сливочное или кокосовое масло? (по желанию)'}</div>
+            <div class="chips-row">${kinds}</div>
             <div class="chips-row">${chips}</div>
         </div>`;
     }
