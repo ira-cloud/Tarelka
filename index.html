@@ -118,6 +118,17 @@
         .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-top: 10px; }
         .plan-grid label { font-size: 10px; color: var(--text-muted); font-weight: 600; }
         .plan-grid input, .plan-grid select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; margin: 3px 0 8px; background: #fff; }
+        /* в окнах — 16px, чтобы iPhone не увеличивал страницу при вводе */
+        .sheet input, .sheet select, .sheet textarea { font-size: 16px !important; }
+        .meal-card { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; background: #fafcfa; }
+        .meal-head { display: flex; align-items: center; gap: 8px; }
+        .meal-num { width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .meal-actions { display: flex; gap: 14px; margin-top: 4px; }
+        .meal-actions button { background: none; border: none; font-size: 12px; cursor: pointer; padding: 4px 0; color: var(--primary); font-weight: 600; }
+        .meal-actions button.del { color: var(--danger); }
+        .edit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 8px; }
+        .edit-grid label, .edit-label { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+        .edit-grid input { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 10px; margin: 3px 0 8px; background: #fff; }
         .stat-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
         .stat-row > span:first-child { white-space: nowrap; }
         .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
@@ -289,6 +300,41 @@
 </div>
 
 
+
+<!-- Приём пищи: добавить вручную или изменить -->
+<div class="sheet" id="mealSheet" onclick="if (event.target === this) closeMealEditor()">
+    <div class="sheet-inner">
+        <div class="sheet-head"><b id="mealSheetTitle">Приём пищи</b><button onclick="closeMealEditor()" aria-label="Закрыть">✕</button></div>
+        <div class="plan-grid">
+            <label>Приём
+                <select id="mType">
+                    <option value="breakfast">🍳 Завтрак</option>
+                    <option value="lunch">🍲 Обед</option>
+                    <option value="dinner">🍽 Ужин</option>
+                    <option value="snack">🍎 Перекус</option>
+                </select>
+            </label>
+            <label>Время<input type="time" id="mTime"></label>
+        </div>
+        <label class="edit-label">Название<input type="text" id="mDish" placeholder="Например: овсянка с ягодами"></label>
+        <label class="edit-label">Продукты — по одному в строке, с весом
+            <textarea id="mItems" rows="4" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:10px; margin:3px 0 6px; font-family:inherit; resize:vertical;"
+                placeholder="овсянка на воде — 200 г&#10;черника — 50 г&#10;грецкие орехи — 15 г"></textarea>
+        </label>
+        <button class="btn-secondary" style="margin-top:0;" onclick="calcMealFromItems(this)">🤖 Посчитать КБЖУ по продуктам</button>
+        <div class="section-label">КБЖУ (можно исправить вручную)</div>
+        <div class="edit-grid">
+            <label>Ккал<input type="text" inputmode="decimal" id="mKcal"></label>
+            <label>Белки, г<input type="text" inputmode="decimal" id="mProtein"></label>
+            <label>Жиры, г<input type="text" inputmode="decimal" id="mFat"></label>
+            <label>Углев., г<input type="text" inputmode="decimal" id="mCarbs"></label>
+            <label>Клетч., г<input type="text" inputmode="decimal" id="mFiber"></label>
+            <label>Доб. сахар, г<input type="text" inputmode="decimal" id="mSugar"></label>
+        </div>
+        <button class="btn-primary" onclick="saveMealEditor()">Сохранить</button>
+    </div>
+</div>
+
 <!-- Профиль: открывается кнопкой с лицом -->
 <div class="sheet" id="profileSheet" onclick="if (event.target === this) closeProfile()">
     <div class="sheet-inner">
@@ -372,7 +418,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · диктовка с клавиатуры';
+    const APP_VERSION = '2026-10-09 · приёмы пищи';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -1161,7 +1207,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         const same = previous && previous.photoId === sourceId;
         Object.assign(lastAnalysis, same
             ? { id: previous.id, date: previous.date, time: previous.time, late: previous.late, saved: previous.saved }
-            : { id: now.getTime(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now), saved: true });
+            : { id: newMealId(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now), saved: true });
         lastAnalysis.photoId = sourceId;
         renderAnalysis(lastAnalysis);
         saveMeal();
@@ -1400,6 +1446,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
     function mealRecord(a) {
         return {
             id: a.id, time: a.time, dish: a.dish || 'Блюдо', late: !!a.late,
+            type: a.mealType || autoMealType(a.time, getTotals(a).kcal),
             totals: getTotals(a),
             items: (a.items || []).map(i => ({
                 name: String(i.name || ''), grams: r0(num(i.grams) * (num(a.eaten) || 1)), kcal: r0(num(i.kcal) * (num(a.eaten) || 1)),
@@ -1433,6 +1480,132 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         if (a.saved) saveMeal();
         else { setDay(a.date, getDay(a.date).filter(m => m.id !== a.id)); renderDay(); renderHistory(); }
         renderAnalysis(a);
+    }
+
+    // ---------- Типы приёмов и ручное редактирование ----------
+    const MEAL_TYPES = { breakfast: '🍳 Завтрак', lunch: '🍲 Обед', dinner: '🍽 Ужин', snack: '🍎 Перекус' };
+
+    function autoMealType(time, kcal) {
+        const h = parseInt(String(time || '12').slice(0, 2), 10);
+        if (num(kcal) && num(kcal) < 200) return 'snack';
+        if (h < 11) return 'breakfast';
+        if (h < 16) return 'lunch';
+        return 'dinner';
+    }
+
+    // Уникальный номер записи: время + случайная добавка, чтобы два приёма никогда не совпали
+    let lastMealId = 0;
+    function newMealId() {
+        lastMealId = Math.max(lastMealId + 1, Date.now() * 1000 + Math.floor(Math.random() * 1000));
+        return lastMealId;
+    }
+
+    let editing = null;      // { date, id } — что редактируем; id = 0 — новый приём
+    let editorItems = null;  // продукты, посчитанные ИИ (с группами), пока текст не меняли
+
+    function itemsToText(items) {
+        return (items || []).map(i => `${i.name}${i.grams ? ' — ' + r0(i.grams) + ' г' : ''}`).join('\n');
+    }
+
+    // «огурец — 80 г», «огурец 80г», «огурец» → { name, grams }
+    function parseItems(text) {
+        return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+            const m = line.match(/^(.*?)[\s—–:-]+(\d+(?:[.,]\d+)?)\s*(?:г|гр|грамм\w*|g)?\.?$/i);
+            const item = m ? { name: m[1].trim(), grams: r0(m[2].replace(',', '.')) } : { name: line, grams: 0 };
+            item.groups = productGroups(item);
+            return item;
+        });
+    }
+
+    function openMealEditor(date = localDate(), id = 0) {
+        const meal = id ? getDay(date).find(m => m.id === id) : null;
+        editing = { date, id: meal ? id : 0 };
+        editorItems = null;
+        const now = new Date().toTimeString().slice(0, 5);
+        const t = meal?.totals || {};
+        document.getElementById('mealSheetTitle').textContent = meal ? '✏️ Изменить приём пищи' : '➕ Новый приём пищи';
+        document.getElementById('mTime').value = meal?.time || now;
+        document.getElementById('mType').value = meal?.type || autoMealType(meal?.time || now, t.kcal);
+        document.getElementById('mDish').value = meal?.dish || '';
+        document.getElementById('mItems').value = itemsToText(meal?.items);
+        const val = v => (v === undefined || v === null || v === '') ? '' : String(Math.round(num(v) * 10) / 10);
+        document.getElementById('mKcal').value = val(t.kcal);
+        document.getElementById('mProtein').value = val(t.protein);
+        document.getElementById('mFat').value = val(t.fat);
+        document.getElementById('mCarbs').value = val(t.carbs);
+        document.getElementById('mFiber').value = val(t.fiber);
+        document.getElementById('mSugar').value = val(addedSugarOrEmpty(t));
+        document.getElementById('mealSheet').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+    function addedSugarOrEmpty(t) { return t.added_sugar !== undefined ? t.added_sugar : t.sugar; }
+
+    function closeMealEditor() {
+        document.getElementById('mealSheet').classList.remove('open');
+        document.body.style.overflow = '';
+        editing = null;
+    }
+
+    // ИИ считает КБЖУ по списку продуктов из редактора
+    async function calcMealFromItems(btn) {
+        const text = document.getElementById('mItems').value.trim();
+        if (!text) { alert('Впишите продукты — по одному в строке, лучше с весом.'); return; }
+        const label = btn.textContent;
+        btn.textContent = '⏳ Считаю…';
+        const plan = getPlan();
+        const prompt = `Посчитай КБЖУ продуктов (значения для продукта в том виде, как он съеден: варёный, жареный и т.п.; источники — USDA, таблицы Скурихина).
+Если вес не указан — возьми типичную порцию для взрослого. Проверь: kcal ≈ 4×белки + 4×(углеводы − клетчатка) + 2×клетчатка + 9×жиры; totals = сумма items.
+added_sugar — только добавленный сахар (не из целых фруктов, ягод, овощей, молока).${sugarContext(plan) ? ' У пользователя ' + sugarContext(plan) + '.' : ''}
+Продукты:
+${text}
+Ответь строго JSON: {"dish": "короткое название приёма пищи", "items": [{"name": "продукт", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "fiber": г, "sugar": г, "added_sugar": г, "groups": ["dairy|gluten|eggs|nuts|soy|fish|seafood|citrus|sugar|processed_meat|corn|strawberry"]}], "totals": {"kcal": число, "protein": г, "fat": г, "carbs": г, "fiber": г, "sugar": г, "added_sugar": г}}`;
+        const raw = await callAI(prompt, null, true, msg => { btn.textContent = '⏳ ' + msg; });
+        btn.textContent = label;
+        if (!raw) return;
+        let data;
+        try { data = JSON.parse(raw.replace(/^```(json)?|```$/gm, '').trim().replace(/^[^{]*/, '').replace(/[^}]*$/, '')); }
+        catch (e) { alert('Не удалось разобрать ответ. Попробуйте ещё раз.'); return; }
+        const t = data.totals || {};
+        const set = (id, v) => document.getElementById(id).value = String(Math.round(num(v) * 10) / 10);
+        set('mKcal', t.kcal); set('mProtein', t.protein); set('mFat', t.fat); set('mCarbs', t.carbs); set('mFiber', t.fiber); set('mSugar', t.added_sugar);
+        if (!document.getElementById('mDish').value.trim() && data.dish) document.getElementById('mDish').value = data.dish;
+        editorItems = (data.items || []).map(i => ({ name: String(i.name || ''), grams: r0(i.grams), kcal: r0(i.kcal), protein: num(i.protein), fat: num(i.fat), carbs: num(i.carbs), fiber: num(i.fiber), sugar: num(i.sugar), groups: productGroups(i) }));
+        document.getElementById('mItems').value = itemsToText(editorItems);
+        editorItems.text = document.getElementById('mItems').value;
+    }
+
+    function saveMealEditor() {
+        if (!editing) return;
+        const kcal = num(document.getElementById('mKcal').value.replace(',', '.'));
+        const dish = document.getElementById('mDish').value.trim();
+        const itemsText = document.getElementById('mItems').value.trim();
+        if (!kcal && !itemsText) { alert('Впишите продукты и нажмите «Посчитать КБЖУ», или заполните калории вручную.'); return; }
+        const { date, id } = editing;
+        const day = getDay(date);
+        const old = day.find(m => m.id === id) || {};
+        const time = document.getElementById('mTime').value || new Date().toTimeString().slice(0, 5);
+        const v = idv => num(document.getElementById(idv).value.replace(',', '.'));
+        const items = editorItems && editorItems.text === document.getElementById('mItems').value ? editorItems.slice() : parseItems(itemsText);
+        const meal = {
+            ...old,
+            id: id || newMealId(), time, type: document.getElementById('mType').value,
+            dish: dish || items.map(i => i.name).slice(0, 3).join(', ') || 'Приём пищи',
+            late: parseInt(time.slice(0, 2), 10) >= LAST_MEAL_HOUR || parseInt(time.slice(0, 2), 10) < 5,
+            totals: { ...(old.totals || {}), kcal, protein: v('mProtein'), fat: v('mFat'), carbs: v('mCarbs'), fiber: v('mFiber'), added_sugar: v('mSugar'), sugar: Math.max(v('mSugar'), num(old.totals?.sugar)) },
+            items, manual: true
+        };
+        delete meal.totals.kcal_min; delete meal.totals.kcal_max;
+        const meals = day.filter(m => m.id !== id);
+        meals.push(meal);
+        meals.sort((x, y) => x.time.localeCompare(y.time));
+        setDay(date, meals);
+        localStorage.setItem('ce_norms_' + date, JSON.stringify(getNorms()));
+        // Если правили приём, который сейчас открыт в результате анализа, — отвязываем его, чтобы поправки масла не затёрли ручные
+        if (lastAnalysis && lastAnalysis.id === id) { lastAnalysis = null; document.getElementById('calResult').innerHTML = ''; }
+        closeMealEditor();
+        renderDay();
+        renderHistory();
+        checkRepeats(date);
     }
 
     function removeMeal(date, id) {
@@ -1588,18 +1761,28 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         const act = getActivity();
         if (act) advice.unshift(`<li>⌚ Сегодня ${act.steps.toLocaleString('ru-RU')} шагов и ${act.exercise} мин тренировок — потрачено ещё ~${activeKcal(act, num(profile.weight))} ккал, это уже учтено в норме.</li>`);
         const date = localDate();
-        const meals = day.map(m => `<details class="meal-row">
-            <summary><span>${m.late ? '🌙 ' : ''}${esc(m.time)} — ${esc(m.dish)}</span><span>${r0(m.totals.kcal)} ккал</span></summary>
-            <div style="color:var(--text-muted); margin-top:4px;">Б ${r0(m.totals.protein)} · Ж ${r0(m.totals.fat)} · У ${r0(m.totals.carbs)} г</div>
-            ${(m.items || []).length || (m.extras || []).length ? `<ul>${(m.items || []).map(i => `<li>${esc(i.name)} ${i.grams ? i.grams + ' г' : ''}</li>`).join('')}${(m.extras || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
-            <button class="link-btn" onclick="removeMeal('${date}', ${m.id || 0})">🗑 Убрать из дневника</button>
-        </details>`).join('');
+        const meals = day.map((m, i) => `<div class="meal-card">
+            <div class="meal-head"><span class="meal-num">${i + 1}</span>
+                <b>${MEAL_TYPES[m.type || autoMealType(m.time, m.totals.kcal)]}</b>
+                <span style="color:var(--text-muted);">${m.late ? '🌙 ' : ''}${esc(m.time)}</span>
+                <span style="margin-left:auto; font-weight:700;">${r0(m.totals.kcal)} ккал</span></div>
+            <div style="margin-top:3px;">${esc(m.dish)}</div>
+            <div style="color:var(--text-muted); font-size:11px;">Б ${r0(m.totals.protein)} · Ж ${r0(m.totals.fat)} · У ${r0(m.totals.carbs)} г${m.manual ? ' · ✍️ вручную' : ''}</div>
+            ${(m.items || []).length || (m.extras || []).length ? `<details style="font-size:11px; margin-top:2px;"><summary style="cursor:pointer; color:var(--text-muted);">Состав</summary><ul style="padding-left:16px; color:var(--text-muted);">${(m.items || []).map(it => `<li>${esc(it.name)} ${it.grams ? it.grams + ' г' : ''}</li>`).join('')}${(m.extras || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+            <div class="meal-actions">
+                <button onclick="openMealEditor('${date}', ${m.id || 0})">✏️ Изменить</button>
+                <button class="del" onclick="removeMeal('${date}', ${m.id || 0})">🗑 Удалить</button>
+            </div>
+        </div>`).join('');
         const repeats = repeatAlerts(date);
 
         document.getElementById('dayBody').innerHTML = `
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">Нормы под цель: ${goalText(getPlan())}</div>
             ${bars}
-            ${meals ? `<div class="recipe-section"><h4>🍽 Приёмы пищи:</h4>${meals}</div>` : '<p style="font-size:11px; color:var(--text-muted);">Пока ничего нет — проанализируйте тарелку, и она сохранится сюда сама.</p>'}
+            <div class="recipe-section"><h4>🍽 Приёмы пищи${day.length ? ` (${day.length})` : ''}:</h4>
+                ${meals || '<p style="font-size:11px; color:var(--text-muted);">Пока ничего нет — проанализируйте тарелку или добавьте приём вручную.</p>'}
+                <button class="btn-secondary" style="margin-top:2px;" onclick="openMealEditor()">➕ Добавить приём пищи вручную</button>
+            </div>
             ${repeats.map(x => `<div class="alert-box">⚠️ <b>${PRODUCT_GROUPS[x.g].name}</b> — ${x.days} дн. подряд. ${PRODUCT_GROUPS[x.g].tip}</div>`).join('')}
             ${sum.sugar > norms.sugar ? `<p style="color:var(--danger); font-size:11px; margin-top:6px;">⚠️ Норма сахара на сегодня превышена.</p>` : ''}
             ${advice.length ? `<div class="recipe-section"><h4>📋 Рекомендации на остаток дня:</h4><ul class="advice">${advice.join('')}</ul></div>` : ''}`;
