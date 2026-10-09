@@ -206,37 +206,40 @@
 
         <div class="section-label">Как сфотографировать:</div>
         <div style="font-size:11px; line-height:1.5; margin-bottom:8px;">
-            ✋ <b>Левую руку</b> положите ровно над тарелкой, большой палец — вдоль края тарелки.<br>
-            🥄 <b>Столовую ложку</b> положите под тарелкой. Налейте в неё столько масла, сколько добавили в блюдо (по умолчанию считается оливковое). Сливочное масло можно положить кусочком рядом.
+            ✋ <b>Левую руку</b> положите слева от тарелки, пальцами вверх, большой палец — вдоль края тарелки.<br>
+            🥄 <b>Столовую ложку</b> положите справа от тарелки. Налейте в неё столько масла, сколько добавили в блюдо (по умолчанию считается оливковое). Сливочное масло можно положить кусочком рядом.
         </div>
 
         <div class="section-label">Сфотографируйте тарелку:</div>
         <div class="cam-box" id="camBox">
             <video id="camVideo" playsinline muted style="display:none;"></video>
             <img id="camPhoto" alt="" style="display:none;">
-            <div class="cam-hint" id="camHint">Рука сверху, тарелка в центре, ложка с маслом снизу — по ним определяется размер порции</div>
+            <div class="cam-hint" id="camHint">Рука слева, тарелка в центре, ложка с маслом справа — по ним определяется размер порции</div>
             <svg class="overlay" id="camOverlay" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
-                <!-- левая рука ладонью вниз, пальцы вправо, большой палец вдоль края тарелки -->
+                <!-- левая рука слева от тарелки: ладонью вниз, пальцы вверх, большой палец вдоль края тарелки -->
                 <g id="handShape" opacity="0.38" fill="#ffffff">
-                    <rect x="-30" y="44" width="140" height="74" rx="26"/>
-                    <rect x="90" y="47" width="78" height="14" rx="7"/>
-                    <rect x="95" y="62" width="95" height="15" rx="7.5"/>
-                    <rect x="95" y="78" width="103" height="15" rx="7.5"/>
-                    <rect x="95" y="94" width="94" height="15" rx="7.5"/>
-                    <rect x="70" y="104" width="78" height="16" rx="8" transform="rotate(4 70 112)"/>
+                    <g transform="translate(-40 338) rotate(-90)">
+                        <rect x="-30" y="44" width="140" height="74" rx="26"/>
+                        <rect x="90" y="47" width="78" height="14" rx="7"/>
+                        <rect x="95" y="62" width="95" height="15" rx="7.5"/>
+                        <rect x="95" y="78" width="103" height="15" rx="7.5"/>
+                        <rect x="95" y="94" width="94" height="15" rx="7.5"/>
+                        <rect x="70" y="104" width="78" height="16" rx="8" transform="rotate(4 70 112)"/>
+                    </g>
                 </g>
                 <!-- тарелка -->
-                <circle cx="168" cy="222" r="96" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.8"/>
-                <circle cx="168" cy="222" r="68" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="4 6" opacity="0.5"/>
-                <!-- столовая ложка под тарелкой, черпак справа -->
+                <circle cx="166" cy="215" r="82" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.8"/>
+                <circle cx="166" cy="215" r="58" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="4 6" opacity="0.5"/>
+                <!-- столовая ложка справа от тарелки, вертикально, черпак сверху -->
                 <g opacity="0.38" fill="#ffffff">
-                    <rect x="55" y="341" width="130" height="8" rx="4" transform="rotate(-3 120 345)"/>
-                    <ellipse cx="210" cy="340" rx="27" ry="14"/>
+                    <ellipse cx="273" cy="160" rx="15" ry="24"/>
+                    <rect x="269" y="180" width="8" height="100" rx="4"/>
                 </g>
-                <ellipse cx="212" cy="340" rx="17" ry="8" fill="#f2c94c" opacity="0.6"/>
-                <text x="60" y="36" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">левая рука</text>
-                <text x="168" y="226" fill="#fff" font-size="11" text-anchor="middle" opacity="0.7">тарелка</text>
-                <text x="120" y="330" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">ложка + масло</text>
+                <ellipse cx="273" cy="157" rx="9" ry="15" fill="#f2c94c" opacity="0.6"/>
+                <text x="42" y="140" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">левая рука</text>
+                <text x="166" y="219" fill="#fff" font-size="11" text-anchor="middle" opacity="0.7">тарелка</text>
+                <text x="273" y="298" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">ложка</text>
+                <text x="273" y="311" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">+ масло</text>
             </svg>
         </div>
         <div class="btn-row">
@@ -379,9 +382,9 @@
 
     function renderProfile() {
         document.querySelectorAll('#genderSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.gender));
-        // Женская рука на рамке чуть меньше мужской (масштаб от запястья у левого края)
+        // Женская рука на рамке чуть меньше мужской (масштаб от запястья внизу слева)
         const s = profile.gender === 'male' ? 1 : 0.88;
-        document.getElementById('handShape').setAttribute('transform', `translate(0 ${118 * (1 - s)}) scale(${s})`);
+        document.getElementById('handShape').setAttribute('transform', `translate(${40 * (1 - s)} ${368 * (1 - s)}) scale(${s})`);
         document.querySelectorAll('#paceSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.pace));
         renderPlan();
         renderActivity();
@@ -802,8 +805,8 @@
         const plan = getPlan(), norms = plan.norms;
         box.innerHTML = '<div class="loading-spinner">🔬 Анализируем тарелку...</div>';
 
-        const prompt = `Ты нутрициолог. На фото тарелка с едой. Рядом с тарелкой лежит левая рука пользователя (ладонью вниз, большой палец вдоль края тарелки)
-и столовая ложка — эталоны масштаба:
+        const prompt = `Ты нутрициолог. На фото тарелка с едой. Слева от тарелки лежит левая рука пользователя (ладонью вниз, пальцы вверх, большой палец вдоль края тарелки),
+справа — столовая ложка. Это эталоны масштаба:
 - ${HAND_SIZES[profile.gender]};
 - ${SPOON_SIZE}.
 Определи диаметр тарелки по руке и ложке, затем объём и вес каждого продукта. Размер кулака пользователя помогает оценить объём гарнира.
