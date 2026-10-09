@@ -122,11 +122,18 @@
         .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-top: 10px; }
         .plan-grid label { font-size: 10px; color: var(--text-muted); font-weight: 600; }
         .plan-grid input, .plan-grid select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; margin: 3px 0 8px; background: #fff; }
-        .stat-row { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+        .stat-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+        .stat-row > span:first-child { white-space: nowrap; }
         .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
         .tag.ok { background: #e1efe6; color: #2f6b47; } .tag.warn { background: #fff1d6; color: #8a5a00; } .tag.bad { background: #fde2e2; color: #a83232; }
         .advice { font-size: 11px; padding-left: 16px; margin-top: 4px; }
         .advice li { margin-bottom: 3px; }
+        .meal-row { border-bottom: 1px dashed var(--border); padding: 6px 0; font-size: 11px; }
+        .meal-row summary { cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
+        .meal-row ul { padding-left: 16px; margin-top: 4px; color: var(--text-muted); }
+        .link-btn { background: none; border: none; color: var(--danger); font-size: 11px; cursor: pointer; padding: 4px 0; }
+        .alert-box { background: #fdecec; border: 1px solid #f3baba; color: #7a2626; border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 11px; }
+        .day-row { display: flex; justify-content: space-between; font-size: 11px; padding: 5px 0; border-bottom: 1px dashed var(--border); }
         .reminder-banner { background: #fff8eb; border: 1px solid #ffe3b3; color: #664d00; border-radius: 10px; padding: 8px 10px; font-size: 11px; margin-bottom: 10px; display: none; }
         .content { padding: 16px; }
     </style>
@@ -265,6 +272,24 @@
             <div id="dayBody"></div>
             <button class="btn-secondary" onclick="clearDay()">Очистить дневник за день</button>
         </div>
+
+        <div class="result-card" id="historyCard">
+            <div class="result-title">📊 Отчёты</div>
+            <div class="seg" id="periodSeg">
+                <button data-v="week" onclick="setPeriod('week')">Неделя</button>
+                <button data-v="month" onclick="setPeriod('month')">Месяц</button>
+            </div>
+            <div id="historyBody"></div>
+            <button class="btn-secondary" onclick="askPeriodAdvice()">🤖 Рекомендации ИИ за период</button>
+            <div id="periodAdvice"></div>
+        </div>
+
+        <div class="btn-row" style="margin-top:10px;">
+            <button class="btn-secondary" onclick="exportBackup()">💾 Сохранить копию данных</button>
+            <button class="btn-secondary" onclick="document.getElementById('backupFile').click()">📂 Загрузить копию</button>
+        </div>
+        <input type="file" id="backupFile" accept="application/json,.json" style="display:none;" onchange="importBackup(this)">
+        <p style="font-size:10px; color:var(--text-muted); margin-top:6px; line-height:1.4;">Дневник и отчёты хранятся только в этом телефоне. Раз в неделю-две сохраняйте копию в «Файлы» — она нужна при смене телефона или очистке Safari.</p>
 
         <p style="font-size:10px; color:var(--text-muted); text-align:center; margin-top:14px; line-height:1.5;">
             Приложение бесплатное. Оценки приблизительные и не заменяют консультацию врача.<br>
@@ -447,6 +472,10 @@
     const BUTTER_CHOICES = [0, 5, 10, 15, 20, 30];
     const FILLS = [[1, 'Полная'], [0.75, '¾'], [0.5, '½'], [0.33, '⅓'], [0.25, '¼'], [0, 'Нет масла']];
     const MEAL_INTERVAL_HOURS = 4.5; // между приёмами пищи
+    const LAST_MEAL_HOUR = 20;       // после 20:00 не едим и не напоминаем
+    const LATE_DINNER_MIN = 19 * 60 + 30; // если до 20:00 не помещается 4,5 ч — ужин в 19:30
+    const MIN_GAP_HOURS = 3;          // но не раньше чем через 3 часа после еды
+    function isLate(d) { return d.getHours() >= LAST_MEAL_HOUR || d.getHours() < 5; }
     const REMINDER_LEAD_MIN = 30;    // напоминание за 30 минут, т.е. через 4 часа
 
     let profile = { gender: 'female', age: '', weight: '', height: '', waist: '', target: '', activity: '1.375', pace: 'normal' };
@@ -473,6 +502,7 @@
         document.getElementById('planCard').open = !getPlan().complete;
         renderProfile();
         renderDay();
+        renderHistory();
         importActivityFromUrl();
         autoSyncOura();
         renderActivity();
@@ -876,7 +906,7 @@
 
     function setPhoto(dataUrl) {
         const [head, base64] = dataUrl.split(',');
-        photoData = { mime: head.match(/data:(.*?);/)[1], base64 };
+        photoData = { mime: head.match(/data:(.*?);/)[1], base64, id: Date.now() };
         const img = document.getElementById('camPhoto');
         img.src = dataUrl;
         img.style.display = 'block';
@@ -913,6 +943,7 @@
     // ---------- Анализ ----------
     async function analyzePlate() {
         const box = document.getElementById('calResult');
+        const previous = lastAnalysis;
         if (!photoData) { alert('Сначала сфотографируйте тарелку или выберите фото'); return; }
         const note = document.getElementById('mealNote').value.trim();
         const plan = getPlan(), norms = plan.norms;
@@ -948,7 +979,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
  "confidence": 0-100,
  "plate_diameter_cm": число,
  "scale_note": "как определил размер порции",
- "items": [{"name": "продукт", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г}],
+ "items": [{"name": "продукт", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г, "groups": ["dairy|gluten|eggs|nuts|soy|fish|seafood|citrus|sugar|processed_meat|corn|strawberry — группы, к которым относится продукт, или пустой список"]}],
  "totals": {"grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г},
  "micros": [{"name": "Витамин C", "amount": число, "unit": "мг|мкг", "percent_daily": число}],
  "glycemic": {"level": "low|medium|high", "glycemic_load": число, "reason": "почему", "tips": ["совет"]},
@@ -980,7 +1011,17 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         };
         const bt = lastAnalysis.butter || {};
         lastAnalysis.butter = { grams: bt.visible ? Math.max(0, r0(bt.grams)) : 0, kind: SOLID_FATS[bt.kind] ? bt.kind : 'butter', detected: !!bt.visible, note: bt.note || '' };
+
+        // Повторный анализ того же фото (с уточнением) заменяет запись, а не добавляет новую
+        const now = new Date();
+        const same = previous && previous.photoId === photoData.id;
+        Object.assign(lastAnalysis, same
+            ? { id: previous.id, date: previous.date, time: previous.time, late: previous.late, saved: previous.saved }
+            : { id: now.getTime(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now), saved: true });
+        lastAnalysis.photoId = photoData.id;
         renderAnalysis(lastAnalysis);
+        saveMeal();
+        if (!same && lastAnalysis.saved) setReminder();
     }
 
     function oilNutrition(oil) {
@@ -1013,6 +1054,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         if (!lastAnalysis) return;
         lastAnalysis.butter = { ...lastAnalysis.butter, [key]: value, note: '', edited: true };
         renderAnalysis(lastAnalysis);
+        saveMeal();
     }
 
     function renderButter(a) {
@@ -1038,6 +1080,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         lastAnalysis.oil[key] = value;
         if (key === 'fill') lastAnalysis.oil.note = ''; // подсказка модели больше не актуальна
         renderAnalysis(lastAnalysis);
+        saveMeal();
     }
 
     function renderOil(a) {
@@ -1156,33 +1199,163 @@ ${note ? `Уточнение от пользователя (доверяй ем�
                 <p style="font-size:10px; color:var(--text-muted); margin-top:4px;">Напишите ответ в поле «Уточнение» выше и нажмите «Анализировать» ещё раз.</p></div>` : ''}
             ${a.summary ? `<p style="margin-top:8px;">${esc(a.summary)}</p>` : ''}
 
+            ${a.late ? `<div class="alert-box">🌙 Поздний приём пищи (после ${LAST_MEAL_HOUR}:00). Поздний ужин мешает сну и восстановлению и чаще откладывается в жир — старайтесь заканчивать есть до ${LAST_MEAL_HOUR}:00.</div>` : ''}
             <div class="btn-row">
                 <button class="btn-secondary" onclick="speakResult()">🔊 Озвучить</button>
-                <button class="btn-secondary" onclick="addToDay()">➕ В дневник</button>
+                <button class="btn-secondary" onclick="toggleSaved()">${a.saved ? '✅ В дневнике · убрать' : '➕ Вернуть в дневник'}</button>
             </div>
             <button class="btn-secondary" onclick="setReminder()">⏰ Напомнить о следующем приёме пищи</button>
-            <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">Следующий приём пищи — через 4,5 часа (белок + клетчатка), напоминание придёт за 30 минут. Оценка по фото приблизительная.</p>
+            <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">Приём пищи сохранён в дневник за сегодня. Следующий — через 4,5 часа, но не позже ${LAST_MEAL_HOUR}:00. Оценка по фото приблизительная.</p>
         </div>`;
     }
 
-    // ---------- Дневник за день ----------
-    function todayKey() { return 'ce_day_' + localDate(); }
-    function getDay() { try { return JSON.parse(localStorage.getItem(todayKey()) || '[]'); } catch (e) { return []; } }
+    // ---------- Дневник: каждый проанализированный приём пищи сохраняется сам ----------
+    function dayKey(date = localDate()) { return 'ce_day_' + date; }
+    function todayKey() { return dayKey(); }
+    function getDay(date = localDate()) { try { return JSON.parse(localStorage.getItem(dayKey(date)) || '[]'); } catch (e) { return []; } }
+    function setDay(date, meals) {
+        if (meals.length) localStorage.setItem(dayKey(date), JSON.stringify(meals));
+        else localStorage.removeItem(dayKey(date));
+    }
 
-    function addToDay() {
-        if (!lastAnalysis) return;
-        const day = getDay();
-        day.push({ time: new Date().toTimeString().slice(0, 5), dish: lastAnalysis.dish, totals: getTotals(lastAnalysis) });
-        localStorage.setItem(todayKey(), JSON.stringify(day));
+    // Запись приёма пищи для дневника и отчётов: итоги, продукты, группы, доля овощей
+    function mealRecord(a) {
+        return {
+            id: a.id, time: a.time, dish: a.dish || 'Блюдо', late: !!a.late,
+            totals: getTotals(a),
+            items: (a.items || []).map(i => ({
+                name: String(i.name || ''), grams: r0(i.grams), kcal: r0(i.kcal),
+                protein: num(i.protein), fat: num(i.fat), carbs: num(i.carbs), sugar: num(i.sugar), fiber: num(i.fiber),
+                groups: productGroups(i)
+            })),
+            extras: [oilNutrition(a.oil) && `масло ${OILS[a.oil.type || DEFAULT_OIL].name.toLowerCase()} ${ru(oilNutrition(a.oil).grams)} г`,
+                     butterNutrition(a.butter) && `${SOLID_FATS[a.butter.kind || 'butter'].name.toLowerCase()} масло ${r0(a.butter.grams)} г`].filter(Boolean),
+            plate: a.plate_split || null,
+            glycemic: a.glycemic?.level || null
+        };
+    }
+
+    function saveMeal() {
+        const a = lastAnalysis;
+        if (!a || !a.saved) return;
+        const meals = getDay(a.date).filter(m => m.id !== a.id);
+        meals.push(mealRecord(a));
+        meals.sort((x, y) => x.time.localeCompare(y.time));
+        setDay(a.date, meals);
+        localStorage.setItem('ce_norms_' + a.date, JSON.stringify(getNorms())); // нормы этого дня — для отчётов
         renderDay();
-        // После приёма пищи сразу предлагаем напоминание о следующем
-        setReminder();
+        renderHistory();
+        checkRepeats(a.date);
+    }
+
+    function toggleSaved() {
+        const a = lastAnalysis;
+        if (!a) return;
+        a.saved = !a.saved;
+        if (a.saved) saveMeal();
+        else { setDay(a.date, getDay(a.date).filter(m => m.id !== a.id)); renderDay(); renderHistory(); }
+        renderAnalysis(a);
+    }
+
+    function removeMeal(date, id) {
+        if (!confirm('Убрать этот приём пищи из дневника?')) return;
+        setDay(date, getDay(date).filter(m => m.id !== id));
+        if (lastAnalysis?.id === id) { lastAnalysis.saved = false; renderAnalysis(lastAnalysis); }
+        renderDay();
+        renderHistory();
     }
 
     function clearDay() {
         if (!confirm('Очистить дневник за сегодня?')) return;
         localStorage.removeItem(todayKey());
+        if (lastAnalysis?.date === localDate()) { lastAnalysis.saved = false; renderAnalysis(lastAnalysis); }
         renderDay();
+        renderHistory();
+    }
+
+    // ---------- Аллергенные и воспалительные продукты ----------
+    // Если группа встречается больше трёх дней подряд — уведомление с рекомендацией
+    const REPEAT_DAYS = 4;
+    const PRODUCT_GROUPS = {
+        dairy: { name: 'Молочные продукты', re: /молок|молоч|сыр|творог|творож|йогурт|кефир|сметан|сливк|сливоч|ряженк|простокваш|моцарел|пармезан|брынз|фета/,
+            tip: 'Казеин и лактоза при ежедневном употреблении могут вызывать непереносимость, вздутие, отёки и высыпания. Сделайте перерыв 2–3 дня: растительный йогурт, кокосовое или миндальное молоко.' },
+        gluten: { name: 'Пшеница и глютен', re: /пшени|хлеб|батон|булк|булоч|багет|лаваш|макарон|спагетт|паста|лапш|манк|кускус|булгур|пицц|пирог|блин|оладь|сухар|гренк|ржан|ячмен|перлов|круассан|печенье/,
+            tip: 'Глютен при ежедневном употреблении может раздражать кишечник и поддерживать воспаление. Замените на гречку, рис, киноа, пшено или батат.' },
+        eggs: { name: 'Яйца', re: /яйц|яичн|омлет|глазунь/,
+            tip: 'Яйца — один из самых частых аллергенов при ежедневном употреблении. Чередуйте с рыбой, птицей, бобовыми.' },
+        nuts: { name: 'Орехи и арахис', re: /арахис|орех|миндал|кешью|фундук|фисташ|пекан|макадами/,
+            tip: 'Орехи и арахис — сильные аллергены. Делайте перерывы и чередуйте с семечками: тыквенными, подсолнечными, льном.' },
+        soy: { name: 'Соя', re: /соев|соя|тофу|эдамаме|мисо/,
+            tip: 'Соя — частый аллерген. Чередуйте с другими бобовыми: чечевицей, нутом, фасолью.' },
+        fish: { name: 'Рыба', re: /рыб|лосос|сёмг|семг|форел|тунец|тунц|скумбри|сельд|треск|минтай|горбуш|судак|окун|икр|дорадо|сибас/,
+            tip: 'Рыба полезна, но при ежедневном употреблении одного вида может развиться аллергия. Меняйте виды рыбы и чередуйте с птицей.' },
+        seafood: { name: 'Морепродукты', re: /кревет|мидии|мидия|кальмар|краб|осьминог|устриц|гребеш|лобстер|омар/,
+            tip: 'Морепродукты — сильные аллергены. Делайте перерывы между днями с морепродуктами.' },
+        citrus: { name: 'Цитрусовые', re: /апельсин|мандарин|лимон|грейпфрут|помело|лайм/,
+            tip: 'Цитрусовые при частом употреблении могут вызывать аллергию. Чередуйте с ягодами, яблоками, грушами.' },
+        sugar: { name: 'Сахар и сладкое', re: /сахар|конфет|шоколад|торт|пирожн|печенье|варень|джем|сироп|мёд|зефир|мармелад|вафл|пончик|газировк|десерт/,
+            tip: 'Сладкое каждый день поддерживает воспаление и скачки сахара. Замените на ягоды или фрукт вместе с орехами или белком.' },
+        processed_meat: { name: 'Колбасы и копчёности', re: /колбас|сосиск|сардельк|ветчин|бекон|салями|буженин|карбонад|паштет|копчён|копчен/,
+            tip: 'Колбасы и копчёности содержат нитриты и много соли, при регулярном употреблении усиливают воспаление. Замените на запечённое мясо, птицу или рыбу.' },
+        corn: { name: 'Кукуруза', re: /кукуруз|попкорн|полент/,
+            tip: 'Кукуруза — частый скрытый аллерген. Чередуйте с другими крупами.' },
+        strawberry: { name: 'Клубника', re: /клубник|земляник/,
+            tip: 'Клубника — частый аллерген. Чередуйте с другими ягодами.' }
+    };
+
+    function productGroups(item) {
+        const name = String(item.name || '').toLowerCase();
+        const fromModel = (Array.isArray(item.groups) ? item.groups : []).filter(g => PRODUCT_GROUPS[g]);
+        const fromName = Object.keys(PRODUCT_GROUPS).filter(g => PRODUCT_GROUPS[g].re.test(name));
+        return [...new Set([...fromModel, ...fromName])];
+    }
+
+    function dayGroups(meals) {
+        const set = new Set();
+        meals.forEach(m => (m.items || []).forEach(i => (i.groups || []).forEach(g => set.add(g))));
+        return set;
+    }
+
+    function shiftDate(date, days) {
+        const d = new Date(date + 'T12:00:00');
+        d.setDate(d.getDate() + days);
+        return localDate(d);
+    }
+
+    // Сколько дней подряд (включая date) встречается группа
+    function streak(group, date) {
+        let n = 0;
+        while (dayGroups(getDay(shiftDate(date, -n))).has(group)) n++;
+        return n;
+    }
+
+    function repeatAlerts(date = localDate()) {
+        return [...dayGroups(getDay(date))]
+            .map(g => ({ g, days: streak(g, date) }))
+            .filter(x => x.days >= REPEAT_DAYS);
+    }
+
+    async function checkRepeats(date) {
+        const alerted = JSON.parse(localStorage.getItem('ce_alerted_' + date) || '[]');
+        const fresh = repeatAlerts(date).filter(x => !alerted.includes(x.g));
+        if (!fresh.length) return;
+        localStorage.setItem('ce_alerted_' + date, JSON.stringify([...alerted, ...fresh.map(x => x.g)]));
+        const text = fresh.map(x => `${PRODUCT_GROUPS[x.g].name} — ${x.days} дн. подряд. ${PRODUCT_GROUPS[x.g].tip}`).join('\n\n');
+        await notify('Разнообразие питания', text);
+    }
+
+    // Системное уведомление (через service worker, иначе — окно в приложении)
+    async function notify(title, body) {
+        try {
+            if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const reg = await navigator.serviceWorker?.getRegistration();
+                if (reg) { await reg.showNotification(title, { body }); return; }
+                new Notification(title, { body });
+                return;
+            }
+        } catch (e) {}
+        alert(title + '\n\n' + body);
     }
 
     // Что недобрано / перебрано за день и чем это закрыть
@@ -1236,14 +1409,195 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const advice = day.length ? dayAdvice(sum, norms, getPlan()) : [];
         const act = getActivity();
         if (act) advice.unshift(`<li>⌚ Сегодня ${act.steps.toLocaleString('ru-RU')} шагов и ${act.exercise} мин тренировок — потрачено ещё ~${activeKcal(act, num(profile.weight))} ккал, это уже учтено в норме.</li>`);
-        const meals = day.map(m => `<li>${esc(m.time)} — ${esc(m.dish)} (${r0(m.totals.kcal)} ккал)</li>`).join('');
+        const date = localDate();
+        const meals = day.map(m => `<details class="meal-row">
+            <summary><span>${m.late ? '🌙 ' : ''}${esc(m.time)} — ${esc(m.dish)}</span><span>${r0(m.totals.kcal)} ккал</span></summary>
+            <div style="color:var(--text-muted); margin-top:4px;">Б ${r0(m.totals.protein)} · Ж ${r0(m.totals.fat)} · У ${r0(m.totals.carbs)} г</div>
+            ${(m.items || []).length || (m.extras || []).length ? `<ul>${(m.items || []).map(i => `<li>${esc(i.name)} ${i.grams ? i.grams + ' г' : ''}</li>`).join('')}${(m.extras || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+            <button class="link-btn" onclick="removeMeal('${date}', ${m.id || 0})">🗑 Убрать из дневника</button>
+        </details>`).join('');
+        const repeats = repeatAlerts(date);
 
         document.getElementById('dayBody').innerHTML = `
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px;">Нормы под цель: ${goalText(getPlan())}</div>
             ${bars}
-            ${meals ? `<div class="recipe-section"><h4>🍽 Приёмы пищи:</h4><ul>${meals}</ul></div>` : '<p style="font-size:11px; color:var(--text-muted);">Пока ничего не добавлено.</p>'}
+            ${meals ? `<div class="recipe-section"><h4>🍽 Приёмы пищи:</h4>${meals}</div>` : '<p style="font-size:11px; color:var(--text-muted);">Пока ничего нет — проанализируйте тарелку, и она сохранится сюда сама.</p>'}
+            ${repeats.map(x => `<div class="alert-box">⚠️ <b>${PRODUCT_GROUPS[x.g].name}</b> — ${x.days} дн. подряд. ${PRODUCT_GROUPS[x.g].tip}</div>`).join('')}
             ${sum.sugar > norms.sugar ? `<p style="color:var(--danger); font-size:11px; margin-top:6px;">⚠️ Норма сахара на сегодня превышена.</p>` : ''}
             ${advice.length ? `<div class="recipe-section"><h4>📋 Рекомендации на остаток дня:</h4><ul class="advice">${advice.join('')}</ul></div>` : ''}`;
+    }
+
+    // ---------- Отчёты: день → неделя → месяц ----------
+    let period = 'week';
+    function setPeriod(p) { period = p; renderHistory(); }
+
+    function dayNorms(date) {
+        try { return JSON.parse(localStorage.getItem('ce_norms_' + date)) || getNorms(); } catch (e) { return getNorms(); }
+    }
+
+    // Отчёт за один день — основа для недельных и месячных
+    function dayReport(date) {
+        const meals = getDay(date);
+        if (!meals.length) return null;
+        const sum = { kcal: 0, protein: 0, fat: 0, carbs: 0, sugar: 0, fiber: 0 };
+        meals.forEach(m => Object.keys(sum).forEach(k => sum[k] += num(m.totals?.[k])));
+        const products = [...new Set(meals.flatMap(m => (m.items || []).map(i => i.name.toLowerCase().trim())).filter(Boolean))];
+        const plates = meals.map(m => m.plate).filter(Boolean);
+        const veg = plates.length ? plates.reduce((acc, p) => acc + num(p.veg_fruit), 0) / plates.length : null;
+        return { date, meals: meals.length, sum, norms: dayNorms(date), products, groups: dayGroups(meals), veg, late: meals.filter(m => m.late).length };
+    }
+
+    // Сводка по набору дневных отчётов
+    function summarize(reports) {
+        const days = reports.filter(Boolean);
+        if (!days.length) return null;
+        const avg = k => days.reduce((acc, d) => acc + d.sum[k], 0) / days.length;
+        const avgNorm = k => days.reduce((acc, d) => acc + num(d.norms[k]), 0) / days.length;
+        const productDays = {};
+        days.forEach(d => d.products.forEach(p => productDays[p] = (productDays[p] || 0) + 1));
+        const groupDays = {};
+        days.forEach(d => d.groups.forEach(g => groupDays[g] = (groupDays[g] || 0) + 1));
+        const vegDays = days.filter(d => d.veg !== null);
+        return {
+            days: days.length,
+            avg: Object.fromEntries(['kcal', 'protein', 'fat', 'carbs', 'sugar', 'fiber'].map(k => [k, avg(k)])),
+            norm: Object.fromEntries(['kcal', 'protein', 'fat', 'carbs', 'sugar', 'fiber'].map(k => [k, avgNorm(k)])),
+            unique: Object.keys(productDays).length,
+            top: Object.entries(productDays).sort((a, b) => b[1] - a[1]).slice(0, 5),
+            groupDays,
+            veg: vegDays.length ? vegDays.reduce((acc, d) => acc + d.veg, 0) / vegDays.length : null,
+            sugarOver: days.filter(d => d.sum.sugar > num(d.norms.sugar)).length,
+            late: days.reduce((acc, d) => acc + d.late, 0)
+        };
+    }
+
+    function periodAdvice(sm, totalDays) {
+        const out = [];
+        const pct = k => sm.norm[k] ? sm.avg[k] / sm.norm[k] : 1;
+        if (pct('kcal') > 1.1) out.push(`Калорий в среднем на ${Math.round((pct('kcal') - 1) * 100)}% больше нормы — уменьшите порции гарнира и масла.`);
+        else if (pct('kcal') < 0.75) out.push(`Калорий в среднем на ${Math.round((1 - pct('kcal')) * 100)}% меньше нормы — сильный недобор замедляет обмен; добавьте полноценный приём пищи.`);
+        if (pct('protein') < 0.85) out.push(`Белка в среднем ${r0(sm.avg.protein)} г из ${r0(sm.norm.protein)} г — добавляйте белок в каждый приём: птица, рыба, яйца, бобовые.`);
+        if (pct('fiber') < 0.7) out.push(`Клетчатки мало (${r0(sm.avg.fiber)} г в день) — больше овощей, зелени, бобовых, ягод.`);
+        if (sm.sugarOver) out.push(`Норма сахара превышена в ${sm.sugarOver} из ${sm.days} дн.`);
+        if (sm.veg !== null && sm.veg < 40) out.push(`Овощи и фрукты занимают в среднем ${r0(sm.veg)}% тарелки, по Гарвардской тарелке нужно 50%.`);
+        const varietyGoal = totalDays >= 28 ? 60 : 30;
+        if (sm.unique < varietyGoal) out.push(`Разных продуктов за период: ${sm.unique}. Для разнообразия стремитесь к ${varietyGoal}+ — меняйте крупы, овощи, виды белка.`);
+        sm.top.filter(([, d]) => d >= Math.max(4, Math.ceil(sm.days * 0.7))).forEach(([p, d]) => out.push(`«${p}» был в ${d} из ${sm.days} дн. — замените его на что-то другое хотя бы через день.`));
+        Object.entries(sm.groupDays).filter(([, d]) => d >= Math.max(4, Math.ceil(sm.days * 0.6))).forEach(([g, d]) => out.push(`${PRODUCT_GROUPS[g].name}: ${d} из ${sm.days} дн. ${PRODUCT_GROUPS[g].tip}`));
+        if (sm.late) out.push(`Поздних приёмов пищи (после ${LAST_MEAL_HOUR}:00): ${sm.late}. Старайтесь заканчивать ужин раньше.`);
+        return out;
+    }
+
+    function summaryHtml(sm) {
+        const rows = [['kcal', 'Калории', 'ккал'], ['protein', 'Белки', 'г'], ['fat', 'Жиры', 'г'], ['carbs', 'Углеводы', 'г'], ['fiber', 'Клетчатка', 'г']]
+            .map(([k, label, unit]) => {
+                const pct = sm.norm[k] ? Math.round(sm.avg[k] / sm.norm[k] * 100) : 0;
+                return `<div class="bar-label"><span>${label} (в среднем)</span><span>${r0(sm.avg[k])} / ${r0(sm.norm[k])} ${unit}</span></div>
+                    <div class="bar"><i class="${pct > 115 ? 'over' : ''}" style="width:${Math.min(pct, 100)}%"></i></div>`;
+            }).join('');
+        return `${rows}
+            <div class="stat-row"><span>Дней с записями</span><span>${sm.days}</span></div>
+            <div class="stat-row"><span>Разных продуктов</span><span>${sm.unique}</span></div>
+            ${sm.veg !== null ? `<div class="stat-row"><span>Овощи и фрукты на тарелке</span><span>${r0(sm.veg)}% · норма 50%</span></div>` : ''}
+            ${sm.top.length ? `<div class="stat-row"><span>Чаще всего</span><span style="text-align:right;">${sm.top.slice(0, 3).map(([p, d]) => `${esc(p)} (${d} дн.)`).join(', ')}</span></div>` : ''}`;
+    }
+
+    // Сегодняшний день попадает в отчёты, только когда он закончен (после 20:00) — иначе средние занижены
+    function lastFullDay() {
+        return new Date().getHours() >= LAST_MEAL_HOUR ? localDate() : shiftDate(localDate(), -1);
+    }
+
+    function renderHistory() {
+        document.querySelectorAll('#periodSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === period));
+        const today = lastFullDay();
+        const body = document.getElementById('historyBody');
+        let html = '';
+        if (period === 'week') {
+            const reports = Array.from({ length: 7 }, (_, i) => dayReport(shiftDate(today, -i)));
+            const sm = summarize(reports);
+            if (!sm) { body.innerHTML = '<p style="font-size:11px; color:var(--text-muted);">Отчёт появится после первого полного дня с записями (день считается законченным в 20:00).</p>'; return; }
+            const days = reports.map((r, i) => {
+                const date = shiftDate(today, -i);
+                const label = new Date(date + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+                return `<details class="meal-row"><summary><span>${label}</span><span>${r ? `${r0(r.sum.kcal)} / ${r0(r.norms.kcal)} ккал · ${r.meals} приём.` : 'нет записей'}</span></summary>
+                    ${r ? `<div style="color:var(--text-muted); margin-top:4px;">Б ${r0(r.sum.protein)} · Ж ${r0(r.sum.fat)} · У ${r0(r.sum.carbs)} · сахар ${r0(r.sum.sugar)} · клетчатка ${r0(r.sum.fiber)} г</div>
+                    <div style="margin-top:4px;">${r.products.map(esc).join(', ')}</div>` : ''}</details>`;
+            }).join('');
+            const advice = periodAdvice(sm, 7);
+            html = `${summaryHtml(sm)}
+                ${advice.length ? `<div class="recipe-section"><h4>📋 Рекомендации на неделю:</h4><ul class="advice">${advice.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+                <div class="recipe-section"><h4>📅 По дням:</h4>${days}</div>`;
+        } else {
+            // Месяц — из четырёх недельных сводок
+            const weeks = Array.from({ length: 4 }, (_, w) => {
+                const reports = Array.from({ length: 7 }, (_, i) => dayReport(shiftDate(today, -(w * 7 + i))));
+                return { from: shiftDate(today, -(w * 7 + 6)), to: shiftDate(today, -w * 7), reports, sm: summarize(reports) };
+            });
+            const all = summarize(weeks.flatMap(w => w.reports));
+            if (!all) { body.innerHTML = '<p style="font-size:11px; color:var(--text-muted);">Отчёт появится после первого полного дня с записями (день считается законченным в 20:00).</p>'; return; }
+            const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+            const weekRows = weeks.map(w => `<div class="day-row"><span>${fmt(w.from)} – ${fmt(w.to)}</span><span>${w.sm
+                ? `${r0(w.sm.avg.kcal)} ккал · Б ${r0(w.sm.avg.protein)} г · ${w.sm.unique} продуктов` : 'нет записей'}</span></div>`).join('');
+            const advice = periodAdvice(all, 28);
+            html = `${summaryHtml(all)}
+                <div class="recipe-section"><h4>📆 По неделям:</h4>${weekRows}</div>
+                ${advice.length ? `<div class="recipe-section"><h4>📋 Рекомендации на месяц:</h4><ul class="advice">${advice.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}`;
+        }
+        body.innerHTML = html;
+    }
+
+    // Совет ИИ по периоду: отправляем только сводку (без фото)
+    async function askPeriodAdvice() {
+        const days = period === 'week' ? 7 : 28;
+        const reports = Array.from({ length: days }, (_, i) => dayReport(shiftDate(lastFullDay(), -i))).filter(Boolean);
+        const sm = summarize(reports);
+        const box = document.getElementById('periodAdvice');
+        if (!sm) { box.innerHTML = '<p style="font-size:11px; color:var(--text-muted);">Пока нет записей за этот период.</p>'; return; }
+        const plan = getPlan();
+        const groups = Object.entries(sm.groupDays).map(([g, d]) => `${PRODUCT_GROUPS[g].name}: ${d} дн.`).join('; ') || 'нет';
+        const allProducts = [...new Set(reports.flatMap(r => r.products))].join(', ');
+        const prompt = `Ты нутрициолог. Дай рекомендации по питанию пользователя за ${period === 'week' ? 'неделю' : 'месяц'} на русском языке.
+Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}. Цель: ${goalText(plan)}.
+Дней с записями: ${sm.days} из ${days}.
+В среднем в день: ${r0(sm.avg.kcal)} ккал (норма ${r0(sm.norm.kcal)}), белки ${r0(sm.avg.protein)} г (норма ${r0(sm.norm.protein)}), жиры ${r0(sm.avg.fat)} г (норма ${r0(sm.norm.fat)}), углеводы ${r0(sm.avg.carbs)} г (норма ${r0(sm.norm.carbs)}), сахар ${r0(sm.avg.sugar)} г (максимум ${r0(sm.norm.sugar)}), клетчатка ${r0(sm.avg.fiber)} г (норма ${r0(sm.norm.fiber)}).
+Овощи и фрукты в среднем занимают ${sm.veg !== null ? r0(sm.veg) + '%' : 'нет данных'} тарелки (Гарвардская тарелка — 50%).
+Разных продуктов: ${sm.unique}. Чаще всего: ${sm.top.map(([p, d]) => `${p} (${d} дн.)`).join(', ')}.
+Аллергенные и воспалительные группы по дням: ${groups}. Поздних приёмов пищи после ${LAST_MEAL_HOUR}:00: ${sm.late}.
+Все продукты: ${allProducts}.
+Напиши 5–7 коротких конкретных рекомендаций: чего не хватает, что повторяется слишком часто и чем заменить, как добавить разнообразие, как приблизиться к цели. Без вступления, каждый пункт с новой строки, начиная с «• ».`;
+        box.innerHTML = '<div class="loading-spinner">🤖 Готовлю рекомендации...</div>';
+        const text = await callAI(prompt, null, false, msg => { box.innerHTML = `<div class="loading-spinner">⏳ ${esc(msg)}</div>`; });
+        box.innerHTML = text ? `<div class="recipe-section"><h4>🤖 Рекомендации ИИ:</h4><p style="font-size:11px; white-space:pre-line;">${esc(text.trim())}</p></div>` : '';
+    }
+
+    // ---------- Резервная копия ----------
+    function exportBackup() {
+        const data = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k.startsWith('ce_')) data[k] = localStorage.getItem(k); // ключи ИИ и Oura в копию не попадают
+        }
+        const blob = new Blob([JSON.stringify({ app: 'tarelka', version: 1, saved: new Date().toISOString(), data }, null, 1)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `tarelka-${localDate()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }
+
+    function importBackup(input) {
+        const file = input.files[0];
+        input.value = '';
+        if (!file) return;
+        file.text().then(text => {
+            const backup = JSON.parse(text);
+            if (backup.app !== 'tarelka' || !backup.data) throw new Error('это не копия Тарелки');
+            if (!confirm('Загрузить данные из копии? Записи с теми же датами будут заменены.')) return;
+            Object.entries(backup.data).forEach(([k, v]) => { if (k.startsWith('ce_')) localStorage.setItem(k, v); });
+            location.reload();
+        }).catch(e => alert('Не удалось загрузить копию: ' + e.message));
     }
 
     // ---------- Напоминание ----------
@@ -1258,7 +1612,16 @@ ${note ? `Уточнение от пользователя (доверяй ем�
 
     // at — время самого напоминания (за 30 мин до еды), meal = at + 30 мин
     async function setReminder() {
-        const at = Date.now() + MEAL_INTERVAL_HOURS * 3600 * 1000 - REMINDER_LEAD_MIN * 60 * 1000;
+        const now = new Date();
+        let meal = new Date(now.getTime() + MEAL_INTERVAL_HOURS * 3600 * 1000);
+        const lastMeal = new Date(now); lastMeal.setHours(LAST_MEAL_HOUR, 0, 0, 0);
+        if (meal > lastMeal) {
+            // 4,5 часа выходят за 20:00: ужин в 19:30, если после еды пройдёт хотя бы 3 часа, иначе — на сегодня всё
+            const dinner = new Date(now); dinner.setHours(Math.floor(LATE_DINNER_MIN / 60), LATE_DINNER_MIN % 60, 0, 0);
+            if (dinner - now >= MIN_GAP_HOURS * 3600 * 1000) meal = dinner;
+            else { noMoreMealsToday(); return; }
+        }
+        const at = meal.getTime() - REMINDER_LEAD_MIN * 60 * 1000;
         localStorage.setItem('ce_reminder', String(at));
         if ('Notification' in window && Notification.permission === 'default') {
             try { await Notification.requestPermission(); } catch (e) {}
@@ -1272,13 +1635,22 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const meal = at + REMINDER_LEAD_MIN * 60 * 1000;
         const hhmm = ms => new Date(ms).toTimeString().slice(0, 5);
         banner.style.display = 'block';
-        banner.innerHTML = `⏰ Следующий приём пищи в <b>${hhmm(meal)}</b> (через ${String(MEAL_INTERVAL_HOURS).replace('.', ',')} ч), напоминание — в <b>${hhmm(at)}</b>.
+        const isDinner = new Date(meal).getHours() * 60 + new Date(meal).getMinutes() >= LATE_DINNER_MIN;
+        banner.innerHTML = `⏰ ${isDinner ? 'Ужин — последний приём пищи сегодня' : 'Следующий приём пищи'} в <b>${hhmm(meal)}</b>, напоминание — в <b>${hhmm(at)}</b>.${isDinner ? ` После ${LAST_MEAL_HOUR}:00 уже не едим.` : ''}
             <div style="margin-top:4px;">Чтобы напоминание пришло, даже если приложение закрыто, добавьте его в календарь телефона:</div>
             <div class="btn-row">
                 <button class="btn-secondary" style="margin-top:6px;" onclick="downloadIcs(${at})">📅 Календарь телефона</button>
                 <button class="btn-secondary" style="margin-top:6px;" onclick="openGoogleCalendar(${at})">Google Календарь</button>
             </div>`;
         reminderTimer = setTimeout(fireReminder, Math.max(0, at - Date.now()));
+    }
+
+    function noMoreMealsToday() {
+        clearTimeout(reminderTimer);
+        localStorage.removeItem('ce_reminder');
+        const banner = document.getElementById('reminderBanner');
+        banner.style.display = 'block';
+        banner.innerHTML = `🌙 На сегодня приёмы пищи закончены — после ${LAST_MEAL_HOUR}:00 лучше не есть: так лучше сон, восстановление и сахар утром. Если хочется пить — вода или травяной чай.`;
     }
 
     function calStamp(ms) {
