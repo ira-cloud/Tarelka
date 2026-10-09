@@ -145,6 +145,12 @@
         .full-select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; background: #fff; margin-bottom: 6px; }
         .check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin: 6px 0; }
         .check input { margin-top: 2px; }
+        .rec-bar { display: none; align-items: center; gap: 10px; background: #fdecec; border: 1px solid #f3baba; border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+        .rec-bar.on { display: flex; }
+        .rec-bar button { background: var(--danger); color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+        .rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); flex-shrink: 0; animation: recPulse 1s infinite; }
+        @keyframes recPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+        #micBtn.rec { background: var(--danger) !important; color: #fff; }
         .reminder-banner { background: #fff8eb; border: 1px solid #ffe3b3; color: #664d00; border-radius: 10px; padding: 8px 10px; font-size: 11px; margin-bottom: 10px; display: none; }
         .content { padding: 16px; }
     </style>
@@ -251,7 +257,12 @@
                 placeholder="Можно продиктовать состав всей тарелки. Например: салат — огурец, черри, руккола, заправка 1 ложка оливкового масла; курица запечённая 150 г; гречка 120 г"></textarea>
             <button class="btn-secondary" id="micBtn" style="width:48px; margin-top:0; margin-bottom:6px; padding:0; flex-shrink:0;" onclick="dictateNote()" title="Надиктовать">🎤</button>
         </div>
-        <p style="font-size:10px; color:var(--text-muted); margin:-2px 0 8px; line-height:1.4;">Продиктованный состав и вес важнее фото: Gemini разложит блюдо по вашим словам, а недостающее оценит по снимку. Без фото тоже посчитает — только по описанию.</p>
+        <div class="rec-bar" id="recBar">
+            <span class="rec-dot"></span>
+            <span style="flex:1;"><b>Идёт запись — говорите…</b><br><span id="recLive" style="color:var(--text-muted);">Слушаю</span></span>
+            <button onclick="stopDictation()">Готово</button>
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:-2px 0 8px; line-height:1.4;">Для более точного анализа напишите состав или продиктуйте в аудио 🎤.</p>
         <button class="btn-primary" style="margin-top:0;" onclick="analyzePlate()">🔬 Анализировать</button>
 
         <div id="calResult"></div>
@@ -372,7 +383,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · масштаб по ложке и руке';
+    const APP_VERSION = '2026-10-09 · диктовка';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -1023,26 +1034,53 @@
     }
 
     // ---------- Голос ----------
+    // Диктовка. На iPhone непрерывный режим распознавания повторяет и путает фразы,
+    // поэтому записываем одну фразу (до паузы) и сразу показываем распознанный текст.
     let recognizer = null;
     function dictateNote() {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { alert('Голосовой ввод не поддерживается этим браузером. Можно надиктовать через микрофон на клавиатуре телефона.'); return; }
-        if (recognizer) { recognizer.stop(); return; }          // второе нажатие — закончить диктовку
-        const btn = document.getElementById('micBtn');
+        if (!SR) { alert(DICTATION_FALLBACK); return; }
+        if (recognizer) { stopDictation(); return; }
+        const field = document.getElementById('mealNote');
+        const base = field.value.trim();
+        const join = text => [base, text.trim()].filter(Boolean).join(base && text.trim() ? ', ' : '');
+        let heard = '';
+
         recognizer = new SR();
         recognizer.lang = 'ru-RU';
-        recognizer.continuous = true;                           // можно перечислять состав долго, с паузами
+        recognizer.continuous = false;
+        recognizer.interimResults = true;
+        recognizer.maxAlternatives = 1;
         recognizer.onresult = e => {
-            const field = document.getElementById('mealNote');
-            for (let i = e.resultIndex; i < e.results.length; i++) {
-                if (e.results[i].isFinal) field.value = (field.value.trim() ? field.value.trim() + ', ' : '') + e.results[i][0].transcript.trim();
-            }
+            // Собираем фразу заново из всех результатов — так текст не задваивается
+            heard = Array.from(e.results).map(r => r[0].transcript).join(' ').replace(/\s+/g, ' ');
+            field.value = join(heard);
+            document.getElementById('recLive').textContent = heard || 'Слушаю';
         };
-        recognizer.onerror = e => { if (e.error !== 'no-speech' && e.error !== 'aborted') alert('Ошибка распознавания: ' + e.error); };
-        recognizer.onend = () => { recognizer = null; btn.textContent = '🎤'; btn.style.background = ''; };
-        btn.textContent = '⏹';
-        btn.style.background = '#fde8e8';
-        recognizer.start();
+        recognizer.onerror = e => {
+            if (e.error === 'not-allowed') alert('Разрешите доступ к микрофону для этого сайта: Настройки → Safari → Микрофон → «Разрешить».');
+            else if (e.error === 'service-not-allowed' || e.error === 'network') alert(DICTATION_FALLBACK);
+            else if (e.error !== 'no-speech' && e.error !== 'aborted') alert('Не удалось распознать речь (' + e.error + '). ' + DICTATION_FALLBACK);
+        };
+        recognizer.onend = () => {
+            recognizer = null;
+            field.value = join(heard);
+            setRecording(false);
+        };
+        setRecording(true);
+        try { recognizer.start(); } catch (e) { recognizer = null; setRecording(false); alert(DICTATION_FALLBACK); }
+    }
+
+    const DICTATION_FALLBACK = 'Если запись не работает, нажмите на поле «Состав и уточнение» и продиктуйте через микрофон на клавиатуре телефона — так распознавание самое точное.';
+
+    function stopDictation() { if (recognizer) recognizer.stop(); }
+
+    function setRecording(on) {
+        const btn = document.getElementById('micBtn');
+        btn.textContent = on ? '⏹' : '🎤';
+        btn.classList.toggle('rec', on);
+        document.getElementById('recBar').classList.toggle('on', on);
+        document.getElementById('recLive').textContent = 'Слушаю';
     }
 
     function speakResult() {
