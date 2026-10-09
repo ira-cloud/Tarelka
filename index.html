@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калории по фото</title>
     <meta name="theme-color" content="#4a6b5d">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Калории">
     <link rel="manifest" href="manifest.webmanifest">
@@ -143,7 +144,13 @@
         <input type="password" id="apiKeyInput" placeholder="Вставьте ключ Gemini API..." onchange="saveApiKey()">
         <p style="font-size:11px; color:#e6efe9; margin-top:6px; line-height:1.4;">
             Ключ бесплатный: откройте <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#fff; font-weight:600;">aistudio.google.com/apikey</a>,
-            войдите в Google-аккаунт, нажмите «Create API key», скопируйте ключ и вставьте сюда. Ключ хранится только в этом телефоне.
+            войдите в Google-аккаунт, нажмите «Create API key», скопируйте ключ и вставьте сюда.
+        </p>
+        <input type="password" id="groqKeyInput" placeholder="Запасной ключ Groq (по желанию)..." onchange="saveApiKey()" style="margin-top:10px;">
+        <p style="font-size:11px; color:#e6efe9; margin-top:6px; line-height:1.4;">
+            Groq подключается, если Gemini перегружен или закончился лимит. Ключ бесплатный, без карты:
+            <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:#fff; font-weight:600;">console.groq.com/keys</a> → «Create API Key».
+            Ключи хранятся только в этом телефоне.
         </p>
     </div>
 
@@ -299,8 +306,10 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const savedKey = localStorage.getItem('gemini_api_key');
+        const groqKey = localStorage.getItem('groq_api_key');
         if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
-        else toggleApiPanel(); // без ключа сразу открываем панель ввода
+        if (groqKey) document.getElementById('groqKeyInput').value = groqKey;
+        if (!savedKey && !groqKey) toggleApiPanel(); // без ключей сразу открываем панель ввода
         initCalories();
     });
 
@@ -310,71 +319,106 @@
     }
 
     function saveApiKey() {
-        const key = document.getElementById('apiKeyInput').value.trim();
-        localStorage.setItem('gemini_api_key', key);
+        localStorage.setItem('gemini_api_key', document.getElementById('apiKeyInput').value.trim());
+        localStorage.setItem('groq_api_key', document.getElementById('groqKeyInput').value.trim());
     }
 
-    // Основная модель и запасная: при перегрузке серверов Google (503) или исчерпании лимита (429)
-    // сначала повторяем запрос с паузой, затем переключаемся на облегчённую модель
+    // ---------- ИИ: Gemini (основной) и Groq (запасной) ----------
+    // У каждого провайдера — основная и запасная модель. При перегрузке (500/503) запрос повторяется
+    // с паузой, при лимите (429) или недоступной модели — сразу следующая модель, затем следующий провайдер.
     const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+    // Модели Groq, которые понимают фото (Llama 4)
+    const GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
     const RETRY_DELAYS = [2000, 5000];
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    function geminiErrorText(status, message) {
-        if (status === 400 && /API key/i.test(message)) return 'Ключ Gemini не подходит. Проверьте, что он скопирован полностью (начинается на AIza…).';
-        if (status === 403) return 'Ключ Gemini не имеет доступа. Создайте новый ключ на aistudio.google.com/apikey.';
-        if (status === 429) return 'Закончился бесплатный лимит запросов Gemini. Попробуйте через несколько минут или завтра.';
-        if (status === 503 || status === 500) return 'Серверы Gemini сейчас перегружены. Подождите минуту и нажмите «Анализировать» ещё раз.';
-        return 'Ошибка Gemini: ' + message;
+    class AIError extends Error {
+        constructor(status, message) { super(message); this.status = status; }
     }
 
-    async function callGemini(promptText, extraParts = [], generationConfig = null, onStatus = () => {}) {
-        const apiKey = localStorage.getItem('gemini_api_key') || document.getElementById('apiKeyInput').value.trim();
-        if (!apiKey) {
-            alert('Пожалуйста, нажмите на шапку приложения вверху, чтобы ввести API-ключ!');
+    async function postJson(url, headers, body) {
+        let response, data;
+        try {
+            response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+            data = await response.json();
+        } catch (err) {
+            throw new AIError(0, err.message); // нет сети или браузер не пустил запрос
+        }
+        if (data.error) throw new AIError(data.error.code && Number.isInteger(data.error.code) ? data.error.code : response.status, data.error.message || '');
+        if (!response.ok) throw new AIError(response.status, '');
+        return data;
+    }
+
+    async function askGemini(key, model, prompt, image, json) {
+        const data = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {}, {
+            contents: [{ parts: [{ text: prompt }, ...(image ? [{ inline_data: { mime_type: image.mime, data: image.base64 } }] : [])] }],
+            generationConfig: { temperature: 0.2, ...(json ? { responseMimeType: 'application/json' } : {}) }
+        });
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new AIError(502, 'пустой ответ');
+        return text;
+    }
+
+    async function askGroq(key, model, prompt, image, json) {
+        const content = [{ type: 'text', text: prompt }];
+        if (image) content.push({ type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.base64}` } });
+        const data = await postJson('https://api.groq.com/openai/v1/chat/completions', { Authorization: 'Bearer ' + key }, {
+            model, temperature: 0.2, max_completion_tokens: 4096,
+            messages: [{ role: 'user', content }],
+            ...(json ? { response_format: { type: 'json_object' } } : {})
+        });
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) throw new AIError(502, 'пустой ответ');
+        return text;
+    }
+
+    function aiErrorText(provider, status, message) {
+        if (status === 0) return `Нет связи с ${provider}. Проверьте интернет и попробуйте ещё раз.`;
+        if (status === 401 || (status === 400 && /api key/i.test(message))) return `Ключ ${provider} не подходит. Проверьте, что он скопирован полностью.`;
+        if (status === 403) return `Ключ ${provider} не имеет доступа. Создайте новый ключ.`;
+        if (status === 429) return `Закончился бесплатный лимит запросов ${provider}. Попробуйте через несколько минут или завтра.`;
+        if (status >= 500) return `Серверы ${provider} сейчас перегружены. Подождите минуту и нажмите «Анализировать» ещё раз.`;
+        return `Ошибка ${provider}: ${message}`;
+    }
+
+    async function callAI(prompt, image = null, json = false, onStatus = () => {}) {
+        const providers = [
+            { name: 'Gemini', key: localStorage.getItem('gemini_api_key'), models: GEMINI_MODELS, ask: askGemini },
+            { name: 'Groq', key: localStorage.getItem('groq_api_key'), models: GROQ_MODELS, ask: askGroq }
+        ].filter(p => p.key);
+        if (!providers.length) {
+            alert('Нажмите на шапку приложения вверху и вставьте ключ Gemini (и, по желанию, запасной ключ Groq).');
             toggleApiPanel();
             return null;
         }
-        const body = JSON.stringify({
-            contents: [{ parts: [{ text: promptText }, ...extraParts] }],
-            ...(generationConfig ? { generationConfig } : {})
-        });
 
-        let lastError = null;
-        for (const [m, model] of GEMINI_MODELS.entries()) {
-            if (m > 0) onStatus('Основная модель перегружена — пробую запасную…');
-            for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-                if (attempt > 0) {
-                    onStatus(`Серверы Gemini перегружены — повтор ${attempt} из ${RETRY_DELAYS.length}…`);
-                    await sleep(RETRY_DELAYS[attempt - 1]);
-                }
-                let response, data;
-                try {
-                    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-                    data = await response.json();
-                } catch (err) {
-                    lastError = { status: 0, message: err.message };
-                    continue; // сеть моргнула — пробуем ещё раз
-                }
-                if (!data.error) {
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text) return text;
-                    lastError = { status: 0, message: 'пустой ответ' };
-                    continue;
-                }
-                lastError = { status: data.error.code || response.status, message: data.error.message || '' };
-                if (lastError.status === 404) break;              // модель недоступна — сразу к запасной
-                if (lastError.status === 429) break;              // лимит этой модели — к запасной, у неё свой лимит
-                if (![500, 503].includes(lastError.status)) {     // ключ, запрос и т.п. — повтор не поможет
-                    alert(geminiErrorText(lastError.status, lastError.message));
-                    return null;
+        const errors = [];
+        for (const [pi, provider] of providers.entries()) {
+            if (pi > 0) onStatus(`${providers[pi - 1].name} не ответил — пробую запасной ИИ ${provider.name}…`);
+            let lastError = null;
+            modelLoop:
+            for (const [mi, model] of provider.models.entries()) {
+                if (mi > 0) onStatus(`${provider.name}: основная модель недоступна — пробую запасную…`);
+                // Повторяем только основную модель — запасная получает одну попытку, чтобы не ждать долго
+                for (let attempt = 0; attempt <= (mi === 0 ? RETRY_DELAYS.length : 0); attempt++) {
+                    if (attempt > 0) {
+                        onStatus(`${provider.name} перегружен — повтор ${attempt} из ${RETRY_DELAYS.length}…`);
+                        await sleep(RETRY_DELAYS[attempt - 1]);
+                    }
+                    try {
+                        return await provider.ask(provider.key, model, prompt, image, json);
+                    } catch (e) {
+                        lastError = e;
+                        const modelGone = e.status === 404 || (e.status === 400 && /model/i.test(e.message) && !/api key/i.test(e.message));
+                        if (modelGone || e.status === 429) continue modelLoop;               // к следующей модели
+                        if (e.status === 0 || e.status >= 500) continue;                     // повторить
+                        break modelLoop;                                                     // ключ и т.п. — к следующему провайдеру
+                    }
                 }
             }
+            errors.push(aiErrorText(provider.name, lastError?.status, lastError?.message || ''));
         }
-        alert(lastError?.status === 0 && lastError.message !== 'пустой ответ'
-            ? 'Нет связи с Gemini. Проверьте интернет и попробуйте ещё раз.'
-            : geminiErrorText(lastError?.status, lastError?.message || ''));
+        alert(errors.join('\n\n'));
         return null;
     }
 
@@ -918,11 +962,11 @@ ${note ? `Уточнение от пользователя (доверяй ем�
  "summary": "2–3 предложения итога для озвучки"
 }`;
 
-        const raw = await callGemini(prompt, [{ inline_data: { mime_type: photoData.mime, data: photoData.base64 } }], { responseMimeType: 'application/json', temperature: 0.2 },
+        const raw = await callAI(prompt, photoData, true,
             msg => { box.innerHTML = `<div class="loading-spinner">⏳ ${esc(msg)}</div>`; });
         if (!raw) { box.innerHTML = ''; return; }
         try {
-            lastAnalysis = JSON.parse(raw.replace(/^```(json)?|```$/gm, '').trim());
+            lastAnalysis = JSON.parse(raw.replace(/^```(json)?|```$/gm, '').trim().replace(/^[^{]*/, '').replace(/[^}]*$/, ''));
         } catch (e) {
             box.innerHTML = '<div class="result-card">Не удалось разобрать ответ. Попробуйте ещё раз.</div>';
             return;
