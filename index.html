@@ -70,10 +70,28 @@
         .seg button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
         .profile-row { display: flex; gap: 6px; }
         .profile-row input { margin-bottom: 10px; }
-        .cam-box { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #1f2a24; border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
-        .cam-box video, .cam-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-        .cam-box svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-        .cam-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #cfe0d6; font-size: 11px; padding: 0 16px; }
+        .cam-box { position: relative; width: 100%; aspect-ratio: 1470 / 1199; background: #17211d; border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
+        .cam-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+        .cam-hint { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; color: #cfe0d6; font-size: 11px; padding: 0 16px; text-shadow: 0 1px 2px #000; }
+        /* Полноэкранная камера с контурами-подсказками */
+        .cam-modal { position: fixed; inset: 0; z-index: 1000; background: #000; display: none; flex-direction: column; align-items: center; justify-content: space-between; color: #fff; }
+        .cam-modal.open { display: flex; }
+        .cam-top { width: 100%; display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; font-size: 13px; }
+        .cam-top button { background: rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px; border-radius: 18px; font-size: 18px; cursor: pointer; flex-shrink: 0; }
+        .cam-view { position: relative; width: min(100vw, calc((100vh - 190px) * 1470 / 1199)); aspect-ratio: 1470 / 1199; overflow: hidden; background: #111; }
+        .cam-view video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .cam-view svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+        .cam-bottom { padding: 18px 0 calc(env(safe-area-inset-bottom) + 22px); display: flex; align-items: center; gap: 40px; }
+        .shutter { width: 72px; height: 72px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; }
+        .shutter:active { background: #fff; }
+        .cam-side-btn { background: none; border: none; color: #fff; font-size: 13px; width: 70px; cursor: pointer; }
+        /* Телефон повёрнут боком: кнопка съёмки справа, кадр на всю высоту */
+        @media (orientation: landscape) {
+            .cam-modal { flex-direction: row; justify-content: center; }
+            .cam-top { position: absolute; top: 0; left: 0; width: auto; z-index: 2; padding: 10px calc(env(safe-area-inset-left) + 10px); }
+            .cam-view { width: min(calc(100vw - 130px), calc(100vh * 1470 / 1199)); }
+            .cam-bottom { flex-direction: column-reverse; padding: 0 calc(env(safe-area-inset-right) + 16px) 0 16px; gap: 24px; }
+        }
         .btn-row { display: flex; gap: 6px; }
         .btn-row button { flex: 1; }
         button.btn-secondary { width: 100%; padding: 11px; background: #edf2ee; color: var(--primary); border: 1px solid var(--border); border-radius: 10px; font-weight: 600; font-size: 12px; cursor: pointer; margin-top: 8px; }
@@ -212,41 +230,15 @@
 
         <div class="section-label">Сфотографируйте тарелку:</div>
         <div class="cam-box" id="camBox">
-            <video id="camVideo" playsinline muted style="display:none;"></video>
+            <img id="framePreview" src="frame.jpg" alt="Левая рука слева от тарелки, столовая ложка справа">
             <img id="camPhoto" alt="" style="display:none;">
-            <div class="cam-hint" id="camHint">Рука слева, тарелка в центре, ложка с маслом справа — по ним определяется размер порции</div>
-            <svg class="overlay" id="camOverlay" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
-                <!-- левая рука слева от тарелки: ладонью вниз, пальцы вверх, большой палец вдоль края тарелки -->
-                <g id="handShape" opacity="0.38" fill="#ffffff">
-                    <g transform="translate(-40 338) rotate(-90)">
-                        <rect x="-30" y="44" width="140" height="74" rx="26"/>
-                        <rect x="90" y="47" width="78" height="14" rx="7"/>
-                        <rect x="95" y="62" width="95" height="15" rx="7.5"/>
-                        <rect x="95" y="78" width="103" height="15" rx="7.5"/>
-                        <rect x="95" y="94" width="94" height="15" rx="7.5"/>
-                        <rect x="70" y="104" width="78" height="16" rx="8" transform="rotate(4 70 112)"/>
-                    </g>
-                </g>
-                <!-- тарелка -->
-                <circle cx="166" cy="215" r="82" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.8"/>
-                <circle cx="166" cy="215" r="58" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="4 6" opacity="0.5"/>
-                <!-- столовая ложка справа от тарелки, вертикально, черпак сверху -->
-                <g opacity="0.38" fill="#ffffff">
-                    <ellipse cx="273" cy="160" rx="15" ry="24"/>
-                    <rect x="269" y="180" width="8" height="100" rx="4"/>
-                </g>
-                <ellipse cx="273" cy="157" rx="9" ry="15" fill="#f2c94c" opacity="0.6"/>
-                <text x="42" y="140" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">левая рука</text>
-                <text x="166" y="219" fill="#fff" font-size="11" text-anchor="middle" opacity="0.7">тарелка</text>
-                <text x="273" y="298" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">ложка</text>
-                <text x="273" y="311" fill="#fff" font-size="11" text-anchor="middle" opacity="0.85">+ масло</text>
-            </svg>
+            <div class="cam-hint" id="camHint">Так разложите перед фото: рука слева, тарелка в центре, ложка справа</div>
         </div>
         <div class="btn-row">
             <button class="btn-secondary" id="camBtn" onclick="toggleCamera()">📷 Открыть камеру</button>
             <button class="btn-secondary" onclick="document.getElementById('photoFile').click()">🖼 Из галереи</button>
         </div>
-        <input type="file" id="photoFile" accept="image/*" capture="environment" style="display:none;" onchange="loadPhotoFile(this)">
+        <input type="file" id="photoFile" accept="image/*" style="display:none;" onchange="loadPhotoFile(this)">
 
         <div class="section-label">Уточнение (по желанию):</div>
         <div class="profile-row">
@@ -267,6 +259,36 @@
             Приложение бесплатное. Оценки приблизительные и не заменяют консультацию врача.<br>
             <a href="privacy.html" style="color:var(--primary);">Конфиденциальность и условия</a>
         </p>
+    </div>
+</div>
+
+<!-- Камера внутри приложения: видео + контуры руки, тарелки и ложки по образцу frame.jpg -->
+<div class="cam-modal" id="camModal">
+    <div class="cam-top">
+        <button onclick="stopCamera()" aria-label="Закрыть">✕</button>
+        <span>Совместите руку, тарелку и ложку с контурами</span>
+    </div>
+    <div class="cam-view">
+        <video id="camVideo" playsinline muted autoplay></video>
+        <svg viewBox="0 0 1470 1199" preserveAspectRatio="none">
+            <g fill="rgba(255,255,255,0.10)" stroke="#ffffff" stroke-width="6" stroke-dasharray="22 14" stroke-linejoin="round">
+                <path id="guideHand" d="M224 315 L214 315 L208 321 L201 340 L200 364 L192 364 L178 351 L167 355 L156 382 L152 450 L143 451 L128 435 L120 437 L106 493 L97 689 L112 790 L130 851 L122 985 L106 1108 L121 1117 L153 1122 L220 1122 L255 1118 L266 1113 L268 990 L282 890 L292 863 L318 826 L352 731 L350 678 L355 615 L349 586 L348 524 L345 520 L336 521 L319 534 L311 549 L302 548 L297 418 L290 371 L273 348 L262 349 L255 364 L246 364 L241 334 Z"/>
+                <circle cx="736" cy="558" r="325"/>
+                <path d="M1168 322 L1157 332 L1160 351 L1151 352 L1150 346 L1144 345 L1131 368 L1125 372 L1116 408 L1115 441 L1128 483 L1160 519 L1166 535 L1166 637 L1152 873 L1155 891 L1162 902 L1179 905 L1191 895 L1196 879 L1184 632 L1183 535 L1189 517 L1212 493 L1224 474 L1232 448 L1234 418 L1231 394 L1225 391 L1216 362 L1201 339 L1201 332 L1184 322 Z"/>
+            </g>
+            <ellipse cx="1175" cy="400" rx="40" ry="62" fill="#f2c94c" opacity="0.45"/>
+            <g fill="#fff" font-size="42" font-family="-apple-system, sans-serif" text-anchor="middle" style="paint-order: stroke; stroke: rgba(0,0,0,0.55); stroke-width: 6px;">
+                <text x="226" y="270">левая рука</text>
+                <text x="736" y="572">тарелка</text>
+                <text x="1175" y="985">ложка</text>
+                <text x="1175" y="1035">+ масло</text>
+            </g>
+        </svg>
+    </div>
+    <div class="cam-bottom">
+        <button class="cam-side-btn" onclick="stopCamera(); document.getElementById('photoFile').click();">🖼<br>Галерея</button>
+        <button class="shutter" onclick="capturePhoto()" aria-label="Сделать снимок"></button>
+        <span style="width:70px;"></span>
     </div>
 </div>
 
@@ -382,9 +404,9 @@
 
     function renderProfile() {
         document.querySelectorAll('#genderSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.gender));
-        // Женская рука на рамке чуть меньше мужской (масштаб от запястья внизу слева)
-        const s = profile.gender === 'male' ? 1 : 0.88;
-        document.getElementById('handShape').setAttribute('transform', `translate(${40 * (1 - s)} ${368 * (1 - s)}) scale(${s})`);
+        // Контур руки снят с женской руки; для мужчин он на ~10% больше (масштаб от запястья)
+        const s = profile.gender === 'male' ? 1.1 : 1;
+        document.getElementById('guideHand').setAttribute('transform', `translate(${226 * (1 - s)} ${1123 * (1 - s)}) scale(${s})`);
         document.querySelectorAll('#paceSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === profile.pace));
         renderPlan();
         renderActivity();
@@ -703,42 +725,49 @@
     }
 
     // ---------- Камера ----------
+    // Камера открывается внутри приложения на весь экран, поверх видео — контуры руки, тарелки и ложки.
+    // Снимок обрезается ровно по видимой области, чтобы фото совпадало с контурами.
+    const FRAME_RATIO = 1470 / 1199;
+
     async function toggleCamera() {
-        if (camStream) { capturePhoto(); return; }
         if (!navigator.mediaDevices?.getUserMedia) {
             document.getElementById('photoFile').click();
             return;
         }
         try {
-            camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false });
+            camStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+                audio: false
+            });
             const video = document.getElementById('camVideo');
             video.srcObject = camStream;
+            document.getElementById('camModal').classList.add('open');
             await video.play();
-            video.style.display = 'block';
-            document.getElementById('camOverlay').style.display = '';
-            document.getElementById('camPhoto').style.display = 'none';
-            document.getElementById('camHint').style.display = 'none';
-            document.getElementById('camBtn').textContent = '📸 Сделать снимок';
         } catch (err) {
-            alert('Нет доступа к камере: ' + err.message + '\nМожно выбрать фото из галереи.');
-            camStream = null;
+            stopCamera();
+            alert('Нет доступа к камере: ' + err.message + '\nРазрешите доступ к камере для этого сайта в настройках браузера или выберите фото из галереи.');
         }
     }
 
     function stopCamera() {
         if (camStream) camStream.getTracks().forEach(t => t.stop());
         camStream = null;
-        document.getElementById('camVideo').style.display = 'none';
+        document.getElementById('camModal').classList.remove('open');
         document.getElementById('camBtn').textContent = photoData ? '🔁 Переснять' : '📷 Открыть камеру';
     }
 
     function capturePhoto() {
         const video = document.getElementById('camVideo');
+        const vw = video.videoWidth, vh = video.videoHeight;
+        if (!vw) return;
+        // Та же область, что видна на экране (object-fit: cover по центру)
+        let cw = vw, ch = vw / FRAME_RATIO;
+        if (ch > vh) { ch = vh; cw = vh * FRAME_RATIO; }
+        const scale = Math.min(1, 1280 / cw);
         const canvas = document.createElement('canvas');
-        const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
-        canvas.width = video.videoWidth * scale;
-        canvas.height = video.videoHeight * scale;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.width = Math.round(cw * scale);
+        canvas.height = Math.round(ch * scale);
+        canvas.getContext('2d').drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, canvas.width, canvas.height);
         setPhoto(canvas.toDataURL('image/jpeg', 0.85));
         stopCamera();
     }
@@ -767,8 +796,8 @@
         const img = document.getElementById('camPhoto');
         img.src = dataUrl;
         img.style.display = 'block';
+        document.getElementById('framePreview').style.display = 'none';
         document.getElementById('camHint').style.display = 'none';
-        document.getElementById('camOverlay').style.display = 'none'; // рамка нужна только при съёмке
         document.getElementById('camBtn').textContent = '🔁 Переснять';
     }
 
