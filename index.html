@@ -245,12 +245,14 @@
         </div>
         <input type="file" id="photoFile" accept="image/*" style="display:none;" onchange="loadPhotoFile(this)">
 
-        <div class="section-label">Уточнение (по желанию):</div>
+        <div class="section-label">Состав и уточнение (по желанию):</div>
         <div class="profile-row">
-            <input type="text" id="mealNote" placeholder="Например: это гречка с курицей, соус сметанный">
-            <button class="btn-secondary" style="width:auto; margin-top:0; margin-bottom:10px; padding:0 12px;" onclick="dictateNote()" title="Надиктовать">🎤</button>
+            <textarea id="mealNote" rows="3" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:12px; margin-bottom:6px; background:#fbfdfc; resize:vertical; font-family:inherit;"
+                placeholder="Можно продиктовать состав всей тарелки. Например: салат — огурец, черри, руккола, заправка 1 ложка оливкового масла; курица запечённая 150 г; гречка 120 г"></textarea>
+            <button class="btn-secondary" id="micBtn" style="width:48px; margin-top:0; margin-bottom:6px; padding:0; flex-shrink:0;" onclick="dictateNote()" title="Надиктовать">🎤</button>
         </div>
-        <button class="btn-primary" style="margin-top:0;" onclick="analyzePlate()">🔬 Анализировать тарелку</button>
+        <p style="font-size:10px; color:var(--text-muted); margin:-2px 0 8px; line-height:1.4;">Продиктованный состав и вес важнее фото: Gemini разложит блюдо по вашим словам, а недостающее оценит по снимку. Без фото тоже посчитает — только по описанию.</p>
+        <button class="btn-primary" style="margin-top:0;" onclick="analyzePlate()">🔬 Анализировать</button>
 
         <div id="calResult"></div>
 
@@ -371,7 +373,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · точный подсчёт';
+    const APP_VERSION = '2026-10-09 · состав голосом';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -1023,17 +1025,26 @@
     }
 
     // ---------- Голос ----------
+    let recognizer = null;
     function dictateNote() {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { alert('Голосовой ввод не поддерживается этим браузером'); return; }
-        const rec = new SR();
-        rec.lang = 'ru-RU';
-        rec.onresult = e => {
+        if (!SR) { alert('Голосовой ввод не поддерживается этим браузером. Можно надиктовать через микрофон на клавиатуре телефона.'); return; }
+        if (recognizer) { recognizer.stop(); return; }          // второе нажатие — закончить диктовку
+        const btn = document.getElementById('micBtn');
+        recognizer = new SR();
+        recognizer.lang = 'ru-RU';
+        recognizer.continuous = true;                           // можно перечислять состав долго, с паузами
+        recognizer.onresult = e => {
             const field = document.getElementById('mealNote');
-            field.value = (field.value ? field.value + ', ' : '') + e.results[0][0].transcript;
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+                if (e.results[i].isFinal) field.value = (field.value.trim() ? field.value.trim() + ', ' : '') + e.results[i][0].transcript.trim();
+            }
         };
-        rec.onerror = e => alert('Ошибка распознавания: ' + e.error);
-        rec.start();
+        recognizer.onerror = e => { if (e.error !== 'no-speech' && e.error !== 'aborted') alert('Ошибка распознавания: ' + e.error); };
+        recognizer.onend = () => { recognizer = null; btn.textContent = '🎤'; btn.style.background = ''; };
+        btn.textContent = '⏹';
+        btn.style.background = '#fde8e8';
+        recognizer.start();
     }
 
     function speakResult() {
@@ -1051,8 +1062,11 @@
     async function analyzePlate() {
         const box = document.getElementById('calResult');
         const previous = lastAnalysis;
-        if (!photoData) { alert('Сначала сфотографируйте тарелку или выберите фото'); return; }
         const note = document.getElementById('mealNote').value.trim();
+        if (!photoData && !note) { alert('Сфотографируйте тарелку или опишите (продиктуйте), что на ней.'); return; }
+        const textOnly = !photoData;
+        // Без фото источник — текст: тот же текст = та же запись при повторном анализе
+        const sourceId = textOnly ? 'text:' + note : photoData.id;
         const plan = getPlan(), norms = plan.norms;
         box.innerHTML = '<div class="loading-spinner">🔬 Анализируем тарелку...</div>';
 
@@ -1111,7 +1125,15 @@ ${myPlate ? `- Пользователь измерил свои тарелки: 
 - glycemic_load = Σ(ГИ продукта × усваиваемые углеводы продукта / 100). Уровень: < 10 — low, 10–19 — medium, ≥ 20 — high.
   Учитывай, что белок, жир и клетчатка в той же тарелке смягчают скачок.
 
-${note ? `УТОЧНЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ (доверяй ему больше, чем фото): "${note}".\n` : ''}ПОЛЬЗОВАТЕЛЬ
+${note ? `СОСТАВ И УТОЧНЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ: "${note}"
+Правила для уточнения — оно важнее фото:
+- Названные продукты, способы готовки, соусы и масло — бери как факт, даже если на фото их не видно или видно иначе.
+- Указанный вес (граммы, «ложка», «половина авокадо», «горсть») — используй ТОЧНО, переведя в граммы; на фото оценивай только то, вес чего не назван.
+- Если перечислен состав салата или блюда — разложи его именно на эти ингредиенты (каждый отдельной строкой).
+- Заправку и масло, названные пользователем, считай отдельной строкой в items (это не масло из ложки).
+` : ''}${textOnly ? `ФОТО НЕТ — пользователь описал еду словами. ШАГИ 0–1 пропусти: photo_type = "text", spoon и butter — visible: false.
+Если вес не указан, бери типичную порцию для взрослого, снизь confidence и спроси вес в doubts. plate_split оцени по описанию.
+` : ''}ПОЛЬЗОВАТЕЛЬ
 ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}. Цель: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${sugarContext(plan) ? `
 ВАЖНО: у пользователя ${sugarContext(plan)}. Оценивай гликемический скачок строже, советы давай с учётом этого (порядок еды: овощи → белок → углеводы, меньше быстрых углеводов). Не давай советов по дозам инсулина и лекарств.` : ''}${(() => { const a = getActivity(); return a ? `\nАктивность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
 Суточные нормы: ${norms.kcal} ккал, белок ${norms.protein} г, жиры ${norms.fat} г, углеводы ${norms.carbs} г, добавленный сахар не более ${norms.sugar} г, клетчатка ${norms.fiber} г.
@@ -1140,7 +1162,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
  "summary": "2–3 предложения итога для озвучки"
 }`;
 
-        const raw = await callAI(prompt, photoData, true,
+        const raw = await callAI(prompt, textOnly ? null : photoData, true,
             msg => { box.innerHTML = `<div class="loading-spinner">⏳ ${esc(msg)}</div>`; });
         if (!raw) { box.innerHTML = ''; return; }
         try {
@@ -1161,11 +1183,11 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
 
         // Повторный анализ того же фото (с уточнением) заменяет запись, а не добавляет новую
         const now = new Date();
-        const same = previous && previous.photoId === photoData.id;
+        const same = previous && previous.photoId === sourceId;
         Object.assign(lastAnalysis, same
             ? { id: previous.id, date: previous.date, time: previous.time, late: previous.late, saved: previous.saved }
             : { id: now.getTime(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now), saved: true });
-        lastAnalysis.photoId = photoData.id;
+        lastAnalysis.photoId = sourceId;
         renderAnalysis(lastAnalysis);
         saveMeal();
         if (!same && lastAnalysis.saved) setReminder();
@@ -1322,6 +1344,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         const eaten = num(a.eaten) || 1;
         const eatenChips = EATEN_CHOICES.map(([v, label]) => `<button class="${Math.abs(eaten - v) < 0.01 ? 'active' : ''}" onclick="setEaten(${v})">${label}</button>`).join('');
         const photoWarn = { screenshot: 'Это похоже на скриншот', stock: 'Это похоже на картинку из интернета', not_food: 'На фото не найдена еда' }[a.photo_type];
+        const textNote = a.photo_type === 'text' ? '<p style="font-size:11px; color:var(--text-muted); margin-top:4px;">📝 Посчитано по вашему описанию, без фото.</p>' : '';
         const micros = (a.micros || []).map(m => `<li>${esc(m.name)}: ${esc(m.amount)} ${esc(m.unit)}${m.percent_daily ? ` <span style="color:var(--text-muted)">(${r0(m.percent_daily)}% нормы)</span>` : ''}</li>`).join('');
 
         const sugar = addedSugar(t);
@@ -1332,6 +1355,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
             <span class="badge">Уверенность ${r0(a.confidence)}%</span>
             <div class="result-title">🍽 ${esc(a.dish)}</div>
             <div style="font-size:11px; color:var(--text-muted);">≈ ${r0(t.grams)} г · тарелка ~${r0(a.plate_diameter_cm)} см. ${esc(a.scale_note)}</div>
+            ${textNote}
             ${photoWarn ? `<div class="alert-box">📷 ${photoWarn} — размер порции оценён приблизительно. Точнее всего — своё фото с рукой слева и ложкой справа.</div>` : ''}
             <div class="macro-grid">
                 <div class="macro"><b>${r0(t.kcal)}</b><span>ккал</span></div>
@@ -1375,7 +1399,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
             ${micros ? `<div class="recipe-section"><h4>💊 Витамины и минералы:</h4><ul>${micros}</ul></div>` : ''}
             ${a.missing?.length ? `<div class="recipe-section"><h4>⚖️ Чего не хватает:</h4><ul>${list(a.missing)}</ul></div>` : ''}
             ${a.doubts?.length ? `<div class="doubt"><h4 style="font-size:12px;">❓ Есть сомнения — уточните по желанию:</h4><ul style="font-size:11px; padding-left:16px;">${list(a.doubts)}</ul>
-                <p style="font-size:10px; color:var(--text-muted); margin-top:4px;">Напишите ответ в поле «Уточнение» выше и нажмите «Анализировать» ещё раз.</p></div>` : ''}
+                <p style="font-size:10px; color:var(--text-muted); margin-top:4px;">Допишите ответ в поле «Состав и уточнение» (или продиктуйте 🎤) и нажмите «Анализировать» ещё раз.</p></div>` : ''}
             ${a.summary ? `<p style="margin-top:8px;">${esc(a.summary)}</p>` : ''}
 
             ${a.late ? `<div class="alert-box">🌙 Поздний приём пищи (после ${LAST_MEAL_HOUR}:00). Поздний ужин мешает сну и восстановлению и чаще откладывается в жир — старайтесь заканчивать есть до ${LAST_MEAL_HOUR}:00.</div>` : ''}
