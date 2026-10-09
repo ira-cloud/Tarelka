@@ -304,6 +304,7 @@
             <label>Вес сейчас<input type="text" inputmode="decimal" id="pWeight" placeholder="кг" onchange="setProfile('weight', this.value)"></label>
             <label>Талия<input type="text" inputmode="decimal" id="pWaist" placeholder="см" onchange="setProfile('waist', this.value)"></label>
             <label>Цель — вес<input type="text" inputmode="decimal" id="pTarget" placeholder="кг" onchange="setProfile('target', this.value)"></label>
+            <label>Диаметр ваших тарелок<input type="text" inputmode="decimal" id="pPlate" placeholder="см, по желанию" onchange="setProfile('plateCm', this.value)"></label>
             <label>Активность
                 <select id="pActivity" onchange="setProfile('activity', this.value)">
                     <option value="1.2">Сидячая</option>
@@ -370,7 +371,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · профиль';
+    const APP_VERSION = '2026-10-09 · точный подсчёт';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -428,7 +429,7 @@
     async function askGemini(key, model, prompt, image, json) {
         const data = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {}, {
             contents: [{ parts: [{ text: prompt }, ...(image ? [{ inline_data: { mime_type: image.mime, data: image.base64 } }] : [])] }],
-            generationConfig: { temperature: 0.2, ...(json ? { responseMimeType: 'application/json' } : {}) }
+            generationConfig: { temperature: json ? 0 : 0.4, ...(json ? { responseMimeType: 'application/json' } : {}) }
         });
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new AIError(502, 'пустой ответ');
@@ -439,7 +440,7 @@
         const content = [{ type: 'text', text: prompt }];
         if (image) content.push({ type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.base64}` } });
         const data = await postJson('https://api.groq.com/openai/v1/chat/completions', { Authorization: 'Bearer ' + key }, {
-            model, temperature: 0.2, max_completion_tokens: 4096,
+            model, temperature: json ? 0 : 0.4, max_completion_tokens: 6000,
             messages: [{ role: 'user', content }],
             ...(json ? { response_format: { type: 'json_object' } } : {})
         });
@@ -553,6 +554,7 @@
         document.getElementById('pWaist').value = profile.waist || '';
         document.getElementById('pTarget').value = profile.target || '';
         document.getElementById('pActivity').value = profile.activity || '1.375';
+        document.getElementById('pPlate').value = profile.plateCm || '';
         document.getElementById('pSugar').value = profile.sugarStatus || 'none';
         document.getElementById('pInsulin').checked = profile.insulin === 'true';
         document.getElementById('pMeds').checked = profile.meds === 'true';
@@ -1054,39 +1056,78 @@
         const plan = getPlan(), norms = plan.norms;
         box.innerHTML = '<div class="loading-spinner">🔬 Анализируем тарелку...</div>';
 
-        const prompt = `Ты нутрициолог. На фото тарелка с едой. Слева от тарелки лежит левая рука пользователя (ладонью вниз, пальцы вверх, большой палец вдоль края тарелки),
-справа — столовая ложка. Это эталоны масштаба:
-- ${HAND_SIZES[profile.gender]};
-- ${SPOON_SIZE}.
-Определи диаметр тарелки по руке и ложке, затем объём и вес каждого продукта. Размер кулака пользователя помогает оценить объём гарнира.
-Если рука или ложка не видны — оцени по типичной тарелке ~26 см и снизь confidence.
+        const myPlate = num(profile.plateCm);
+        const prompt = `Ты — профессиональный диетолог и эксперт по компьютерному зрению. Твоя задача — максимально точно посчитать КБЖУ тарелки по фото.
+Работай строго по шагам. Лучше честно указать неуверенность, чем выдать красивую, но неточную цифру.
 
-Ложка на фото — всегда СТОЛОВАЯ (15 мл), чайная ложка не используется.
-В ложку пользователь наливает столько масла, сколько добавит в блюдо (в кашах и гарнирах масло не видно).
-Посмотри на черпак ложки: есть ли в нём жидкость/масло и какая часть ложки заполнена (1 — полная, 0.75, 0.5 — половина, 0.33 — треть, 0.25, 0 — пустая).
-Граммы считать не нужно — приложение само переведёт долю ложки в граммы.
-Твёрдое масло — сливочное (жёлтое) или кокосовое (белое) — пользователь кладёт кусочком в ложку (иногда рядом с тарелкой).
-Оцени вес кусочка, сравнивая с черпаком столовой ложки (ровная столовая ложка ≈ 14 г, с горкой ≈ 20 г), и верни в butter, указав вид в kind.
-НЕ включай масло из ложки и кусочек твёрдого масла в items и totals — их посчитает приложение.
-Если масло уже видно в самой еде (блестит, лужица), учитывай его в items как обычно.
-${note ? `Уточнение от пользователя (доверяй ему больше, чем фото): "${note}".` : ''}
-Пользователь: ${profile.gender === 'male' ? 'мужчина' : 'женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}.
-Цель пользователя: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${sugarContext(plan) ? `
-ВАЖНО: у пользователя ${sugarContext(plan)}. Оценивай гликемический скачок строже, советы давай с учётом этого (порядок еды: овощи → белок → углеводы, меньше быстрых углеводов). Не давай советов по дозам инсулина и лекарств.` : ''}${(() => { const a = getActivity(); return a ? ` Активность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
-Суточные нормы пользователя: ${norms.kcal} ккал, белок ${norms.protein} г, жиры ${norms.fat} г, углеводы ${norms.carbs} г, добавленный сахар не более ${norms.sugar} г, клетчатка ${norms.fiber} г.
+ШАГ 0. ТИП ФОТО
+Определи, настоящее ли это фото еды пользователя (real), скриншот (screenshot), картинка из интернета/рекламы/ИИ (stock) или не еда (not_food).
+Для screenshot/stock масштаб ненадёжен — снизь confidence до 60 и ниже. Для not_food верни пустые items.
 
-Оцени гликемический скачок сахара в крови от этого блюда (например, бутерброд с белым хлебом — высокий) и дай конкретные советы, как его снизить
-(например: добавить жир/масло или белок, съесть сначала салат/овощи, поменять порядок еды, прогуляться 10 минут после еды).
-Если не уверен в составе (соус, начинка, вид мяса, масло) — задай короткие уточняющие вопросы в doubts.
+ШАГ 1. КАЛИБРОВКА МАСШТАБА (два эталона и перекрёстная проверка)
+Слева от тарелки — левая рука пользователя (ладонью вниз, пальцы вверх, большой палец вдоль края тарелки), справа — столовая ложка.
+- Основной эталон — ЛОЖКА, у неё стандартный размер: ${SPOON_SIZE}.
+- Второй эталон — РУКА: ${HAND_SIZES[profile.gender]}.
+${myPlate ? `- Пользователь измерил свои тарелки: диаметр ${myPlate} см. Если тарелка похожа на обычную, используй это значение как самое точное.` : ''}
+- Посчитай диаметр тарелки отдельно по ложке и по руке. Если оценки расходятся больше чем на 15% — возьми оценку по ложке, снизи confidence и напиши об этом в scale_note.
+- Учитывай перспективу: если снято под углом, тарелка выглядит овалом — диаметр = длинная ось овала.
+- Учитывай глубину посуды: глубокая тарелка или миска вмещает в 1,5–2 раза больше, чем кажется сверху.
+- Если эталонов нет — считай тарелку 24–26 см и снизь confidence.
+
+ШАГ 2. СЕГМЕНТАЦИЯ — КАЖДЫЙ ПРОДУКТ ОТДЕЛЬНО
+- Каждый видимый продукт — отдельной строкой в items. НЕ объединяй («салат овощной» → огурец, черри, листья, морковь, перец и т.д. отдельно).
+- Смешанные блюда (плов, рагу, суп, паста с соусом) раскладывай на основные компоненты по типичному рецепту: крупа/макароны, мясо, овощи, масло для готовки, соус.
+- Отдельными строками: соусы, заправки, сыр, сухарики, семечки, хлеб, напитки, если они видны.
+- Оцени, не спрятана ли часть еды под другими продуктами (рис под мясом, соус на дне).
+
+ШАГ 3. ОБЪЁМ → ВЕС
+Для каждого продукта: площадь на тарелке (см²) × средняя высота слоя (см) = объём (мл) → вес = объём × плотность.
+Ориентиры плотности (г/мл): листья салата и зелень 0,1–0,2; нарезанные свежие овощи 0,5–0,6; брокколи/цветная капуста 0,4; варёные крупы (рис, гречка, киноа) 0,8–0,9;
+картофельное пюре, каши на воде 1,0; макароны варёные 0,6–0,7; мясо, птица, рыба куском 1,0–1,05; фарш, котлеты 1,0; ягоды 0,6; соусы 1,0–1,1.
+Ориентиры порций: кусок рыбы/мяса размером с ладонь (без пальцев) и толщиной ~2 см ≈ 100–130 г; кулак варёной крупы ≈ 150–180 г.
+
+ШАГ 4. СОСТОЯНИЕ ПРОДУКТА — СЧИТАЙ ПО ГОТОВОМУ
+- Бери значения на 100 г ИМЕННО в том виде, как на фото: варёный, жареный, запечённый, гриль, на пару, сырой. Никогда не бери значения сырого продукта для приготовленного
+  (варёная крупа ≈ в 2,5–3 раза легче по калориям на 100 г, чем сухая; мясо и рыба после готовки теряют 20–30% воды, и белка на 100 г становится больше).
+- Источники значений: USDA FoodData Central, таблицы Скурихина. kcal, protein, fat, carbs, fiber, sugar — на фактический вес порции.
+
+ШАГ 5. СКРЫТЫЕ КАЛОРИИ
+- Масло, впитанное при готовке (блеск, корочка, жарка во фритюре, овощи в масле), — отдельной строкой «масло при готовке» с оценкой в граммах.
+- Заправки салата, соусы, сахар в соусах и выпечке, сыр, сливки в соусе — не пропускай.
+- Масло в ЛОЖКЕ — это то, что пользователь добавит в блюдо: его НЕ включай в items и totals (его посчитает приложение). Ложка всегда СТОЛОВАЯ (15 мл), чайная не используется.
+  Посмотри на черпак: есть ли в нём жидкое масло и какая часть заполнена (1 — полная, 0.75, 0.5, 0.33, 0.25, 0 — пусто). Граммы не считай.
+- Твёрдое масло — сливочное (жёлтое) или кокосовое (белое) — пользователь кладёт кусочком в ложку (иногда рядом с тарелкой).
+  Оцени вес кусочка по черпаку (ровная столовая ложка ≈ 14 г, с горкой ≈ 20 г) и верни в butter с видом в kind. В items и totals его тоже НЕ включай.
+
+ШАГ 6. ПРОВЕРКА СЕБЯ
+- totals = точная сумма по items (каждое поле).
+- Для каждого продукта: kcal ≈ 4×белки + 4×(углеводы − клетчатка) + 2×клетчатка + 9×жиры (расхождение не больше 10%). Если не сходится — исправь.
+- Разумность: тарелка 24–26 см обычно вмещает 300–600 г еды. Если получилось сильно больше или меньше — перепроверь объёмы.
+- Укажи вилку калорий kcal_min–kcal_max с учётом неточности по фото (обычно ±15–20%, для скриншотов шире).
+
+ШАГ 7. САХАР, СОЛЬ, ГЛИКЕМИЧЕСКАЯ НАГРУЗКА
+- sugar — все сахара; added_sugar — только ДОБАВЛЕННЫЙ сахар (сахар, мёд, сиропы, сладкие соусы, выпечка, сладкие напитки). Сахар из целых фруктов, ягод, овощей и молока — НЕ добавленный.
+- sodium_mg — натрий в тарелке (соль, соусы, сыр, колбасы, соленья).
+- glycemic_load = Σ(ГИ продукта × усваиваемые углеводы продукта / 100). Уровень: < 10 — low, 10–19 — medium, ≥ 20 — high.
+  Учитывай, что белок, жир и клетчатка в той же тарелке смягчают скачок.
+
+${note ? `УТОЧНЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ (доверяй ему больше, чем фото): "${note}".\n` : ''}ПОЛЬЗОВАТЕЛЬ
+${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age ? ', ' + profile.age + ' лет' : ''}${profile.weight ? ', ' + profile.weight + ' кг' : ''}. Цель: ${goalText(plan)}.${plan.bmi ? ' ИМТ ' + plan.bmi.toFixed(1) + '.' : ''}${sugarContext(plan) ? `
+ВАЖНО: у пользователя ${sugarContext(plan)}. Оценивай гликемический скачок строже, советы давай с учётом этого (порядок еды: овощи → белок → углеводы, меньше быстрых углеводов). Не давай советов по дозам инсулина и лекарств.` : ''}${(() => { const a = getActivity(); return a ? `\nАктивность сегодня: ${a.steps} шагов, ${activeKcal(a, plan.w)} активных ккал, ${a.exercise} мин тренировок.` : ''; })()}
+Суточные нормы: ${norms.kcal} ккал, белок ${norms.protein} г, жиры ${norms.fat} г, углеводы ${norms.carbs} г, добавленный сахар не более ${norms.sugar} г, клетчатка ${norms.fiber} г.
+
+Дай конкретные советы, как снизить скачок сахара (добавить белок/жир/клетчатку, начать с овощей, прогулка 10 минут после еды).
+Если не уверен в составе (соус, начинка, вид мяса, способ готовки, сколько масла) — задай короткие уточняющие вопросы в doubts.
 
 Ответь строго JSON без пояснений, все тексты на русском:
 {
+ "photo_type": "real|screenshot|stock|not_food",
  "dish": "название блюда",
  "confidence": 0-100,
  "plate_diameter_cm": число,
- "scale_note": "как определил размер порции",
- "items": [{"name": "продукт", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г, "groups": ["dairy|gluten|eggs|nuts|soy|fish|seafood|citrus|sugar|processed_meat|corn|strawberry — группы, к которым относится продукт, или пустой список"]}],
- "totals": {"grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "sugar": г, "fiber": г},
+ "scale_note": "как определил масштаб: по ложке ~X см, по руке ~Y см, итог",
+ "items": [{"name": "продукт", "state": "сырой|варёный|жареный|запечённый|гриль|на пару|тушёный|консервированный", "grams": число, "kcal": число, "protein": г, "fat": г, "carbs": г, "fiber": г, "sugar": г, "added_sugar": г, "groups": ["dairy|gluten|eggs|nuts|soy|fish|seafood|citrus|sugar|processed_meat|corn|strawberry — группы продукта или пустой список"]}],
+ "totals": {"grams": число, "kcal": число, "kcal_min": число, "kcal_max": число, "protein": г, "fat": г, "carbs": г, "fiber": г, "sugar": г, "added_sugar": г, "sodium_mg": число},
  "micros": [{"name": "Витамин C", "amount": число, "unit": "мг|мкг", "percent_daily": число}],
  "glycemic": {"level": "low|medium|high", "glycemic_load": число, "reason": "почему", "tips": ["совет"]},
  "missing": ["чего не хватает в этой тарелке относительно сбалансированного приёма пищи"],
@@ -1138,15 +1179,31 @@ ${note ? `Уточнение от пользователя (доверяй ем�
     }
 
     // Итоги тарелки + масло из ложки
+    const SCALED_FIELDS = ['grams', 'kcal', 'kcal_min', 'kcal_max', 'protein', 'fat', 'carbs', 'fiber', 'sugar', 'added_sugar', 'sodium_mg'];
+    const EATEN_CHOICES = [[1, 'Всё'], [0.75, '¾'], [0.5, '½'], [0.25, '¼']];
+
+    // Итоги тарелки + масло из ложки и кусочек масла, умноженные на долю съеденного
     function getTotals(a) {
         const t = { ...(a.totals || {}) };
         [oilNutrition(a.oil), butterNutrition(a.butter)].forEach(extra => {
             if (!extra) return;
-            t.grams = num(t.grams) + extra.grams;
-            t.fat = num(t.fat) + extra.fat;
-            t.kcal = num(t.kcal) + extra.kcal;
+            ['grams', 'fat', 'kcal', 'kcal_min', 'kcal_max'].forEach(k => {
+                if (k in t || ['grams', 'fat', 'kcal'].includes(k)) t[k] = num(t[k]) + (k.startsWith('kcal') ? extra.kcal : extra[k]);
+            });
         });
+        const f = num(a.eaten) || 1;
+        if (f !== 1) SCALED_FIELDS.forEach(k => { if (k in t) t[k] = num(t[k]) * f; });
         return t;
+    }
+
+    // Норма сахара — про добавленный сахар; сахар из фруктов и ягод в неё не входит
+    function addedSugar(t) { return t && t.added_sugar !== undefined && t.added_sugar !== null ? num(t.added_sugar) : num(t?.sugar); }
+
+    function setEaten(f) {
+        if (!lastAnalysis) return;
+        lastAnalysis.eaten = f;
+        renderAnalysis(lastAnalysis);
+        saveMeal();
     }
 
     function butterNutrition(butter) {
@@ -1261,10 +1318,13 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const levelText = { low: '🟢 Низкий', medium: '🟡 Средний', high: '🔴 Высокий' }[level];
         const list = arr => (arr || []).map(x => `<li>${esc(x)}</li>`).join('');
 
-        const items = (a.items || []).map(i => `<tr><td>${esc(i.name)}</td><td>${r0(i.grams)}</td><td>${r0(i.kcal)}</td><td>${r0(i.protein)}</td><td>${r0(i.fat)}</td><td>${r0(i.carbs)}</td></tr>`).join('');
+        const items = (a.items || []).map(i => `<tr><td>${esc(i.name)}${i.state || num(i.fiber) ? `<div style="font-size:10px; color:var(--text-muted);">${[i.state && esc(i.state), num(i.fiber) ? 'клетч. ' + ru(i.fiber) + ' г' : ''].filter(Boolean).join(' · ')}</div>` : ''}</td><td>${r0(i.grams)}</td><td>${r0(i.kcal)}</td><td>${r0(i.protein)}</td><td>${r0(i.fat)}</td><td>${r0(i.carbs)}</td></tr>`).join('');
+        const eaten = num(a.eaten) || 1;
+        const eatenChips = EATEN_CHOICES.map(([v, label]) => `<button class="${Math.abs(eaten - v) < 0.01 ? 'active' : ''}" onclick="setEaten(${v})">${label}</button>`).join('');
+        const photoWarn = { screenshot: 'Это похоже на скриншот', stock: 'Это похоже на картинку из интернета', not_food: 'На фото не найдена еда' }[a.photo_type];
         const micros = (a.micros || []).map(m => `<li>${esc(m.name)}: ${esc(m.amount)} ${esc(m.unit)}${m.percent_daily ? ` <span style="color:var(--text-muted)">(${r0(m.percent_daily)}% нормы)</span>` : ''}</li>`).join('');
 
-        const sugar = num(t.sugar);
+        const sugar = addedSugar(t);
         const sugarPct = Math.round(sugar / norms.sugar * 100);
 
         document.getElementById('calResult').innerHTML = `
@@ -1272,29 +1332,37 @@ ${note ? `Уточнение от пользователя (доверяй ем�
             <span class="badge">Уверенность ${r0(a.confidence)}%</span>
             <div class="result-title">🍽 ${esc(a.dish)}</div>
             <div style="font-size:11px; color:var(--text-muted);">≈ ${r0(t.grams)} г · тарелка ~${r0(a.plate_diameter_cm)} см. ${esc(a.scale_note)}</div>
+            ${photoWarn ? `<div class="alert-box">📷 ${photoWarn} — размер порции оценён приблизительно. Точнее всего — своё фото с рукой слева и ложкой справа.</div>` : ''}
             <div class="macro-grid">
                 <div class="macro"><b>${r0(t.kcal)}</b><span>ккал</span></div>
                 <div class="macro"><b>${r0(t.protein)}</b><span>белки, г</span></div>
                 <div class="macro"><b>${r0(t.fat)}</b><span>жиры, г</span></div>
                 <div class="macro"><b>${r0(t.carbs)}</b><span>углев., г</span></div>
             </div>
+            <div style="font-size:10px; color:var(--text-muted); text-align:center;">
+                ${num(t.kcal_min) && num(t.kcal_max) ? `Вероятно от ${r0(t.kcal_min)} до ${r0(t.kcal_max)} ккал · ` : ''}клетчатка ${ru(t.fiber)} г${num(t.sodium_mg) ? ` · натрий ${r0(t.sodium_mg)} мг (соль ≈ ${ru(num(t.sodium_mg) * 2.5 / 1000)} г)` : ''}
+            </div>
+            <div style="font-size:10px; margin-top:8px;">Сколько съели? Итог пересчитается:</div>
+            <div class="chips-row">${eatenChips}</div>
             <table class="items">
                 <tr><th>Продукт</th><th>г</th><th>ккал</th><th>Б</th><th>Ж</th><th>У</th></tr>
                 ${items}
             </table>
+            ${eaten !== 1 ? `<p style="font-size:10px; color:var(--text-muted); margin-top:2px;">В таблице — вся тарелка; в итогах и дневнике — съеденная часть.</p>` : ''}
             ${renderOil(a)}
             ${renderButter(a)}
 
             ${(() => {
                 const pl = getPlan();
                 if (!(pl.onInsulin || ['t1', 't2', 'gestational'].includes(pl.glucose))) return '';
-                return `<div class="stat-row" style="font-size:12px;"><span>🍞 Углеводы в тарелке</span><span><b>${r0(t.carbs)} г ≈ ${ru(num(t.carbs) / 12)} ХЕ</b> <span style="color:var(--text-muted)">(1 ХЕ = 12 г)</span></span></div>`;
+                return `<div class="stat-row" style="font-size:12px;"><span>🍞 Усваиваемые углеводы</span><span><b>${r0(Math.max(0, num(t.carbs) - num(t.fiber)))} г ≈ ${ru(Math.max(0, num(t.carbs) - num(t.fiber)) / 12)} ХЕ</b> <span style="color:var(--text-muted)">(1 ХЕ = 12 г)</span></span></div>`;
             })()}
             ${renderHarvard(a)}
             ${renderMealVsPlan(a, t)}
 
             <div class="recipe-section">
-                <h4>🍬 Сахар: ${sugar.toFixed(1)} г из ${norms.sugar} г в день (${sugarPct}%)</h4>
+                <h4>🍬 Добавленный сахар: ${sugar.toFixed(1)} г из ${norms.sugar} г в день (${sugarPct}%)</h4>
+                ${num(t.sugar) > sugar ? `<p style="font-size:10px; color:var(--text-muted);">Всего сахаров ${ru(t.sugar)} г, из них ${ru(num(t.sugar) - sugar)} г — натуральные (фрукты, ягоды, овощи, молоко), в норму не входят.</p>` : ''}
                 <div class="bar"><i class="${sugarPct > 100 ? 'over' : ''}" style="width:${Math.min(sugarPct, 100)}%"></i></div>
             </div>
 
@@ -1335,7 +1403,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
             id: a.id, time: a.time, dish: a.dish || 'Блюдо', late: !!a.late,
             totals: getTotals(a),
             items: (a.items || []).map(i => ({
-                name: String(i.name || ''), grams: r0(i.grams), kcal: r0(i.kcal),
+                name: String(i.name || ''), grams: r0(num(i.grams) * (num(a.eaten) || 1)), kcal: r0(num(i.kcal) * (num(a.eaten) || 1)),
                 protein: num(i.protein), fat: num(i.fat), carbs: num(i.carbs), sugar: num(i.sugar), fiber: num(i.fiber),
                 groups: productGroups(i)
             })),
@@ -1505,10 +1573,10 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const day = getDay();
         const norms = getNorms();
         const sum = { kcal: 0, protein: 0, fat: 0, carbs: 0, sugar: 0, fiber: 0 };
-        day.forEach(m => Object.keys(sum).forEach(k => sum[k] += num(m.totals[k])));
+        day.forEach(m => Object.keys(sum).forEach(k => sum[k] += k === 'sugar' ? addedSugar(m.totals) : num(m.totals[k])));
         const rows = [
             ['kcal', 'Калории', 'ккал'], ['protein', 'Белки', 'г'], ['fat', 'Жиры', 'г'],
-            ['carbs', 'Углеводы', 'г'], ['sugar', 'Сахар (макс.)', 'г'], ['fiber', 'Клетчатка', 'г']
+            ['carbs', 'Углеводы', 'г'], ['sugar', 'Добавленный сахар (макс.)', 'г'], ['fiber', 'Клетчатка', 'г']
         ];
         const bars = rows.map(([k, label, unit]) => {
             const pct = Math.round(sum[k] / norms[k] * 100);
@@ -1551,7 +1619,7 @@ ${note ? `Уточнение от пользователя (доверяй ем�
         const meals = getDay(date);
         if (!meals.length) return null;
         const sum = { kcal: 0, protein: 0, fat: 0, carbs: 0, sugar: 0, fiber: 0 };
-        meals.forEach(m => Object.keys(sum).forEach(k => sum[k] += num(m.totals?.[k])));
+        meals.forEach(m => Object.keys(sum).forEach(k => sum[k] += k === 'sugar' ? addedSugar(m.totals) : num(m.totals?.[k])));
         const products = [...new Set(meals.flatMap(m => (m.items || []).map(i => i.name.toLowerCase().trim())).filter(Boolean))];
         const plates = meals.map(m => m.plate).filter(Boolean);
         const veg = plates.length ? plates.reduce((acc, p) => acc + num(p.veg_fruit), 0) / plates.length : null;
