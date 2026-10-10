@@ -418,7 +418,7 @@
 
 <script>
     // Меняется с каждым обновлением — по ней видно, что на телефоне свежая версия
-    const APP_VERSION = '2026-10-09 · приёмы пищи';
+    const APP_VERSION = '2026-10-10 · правка прошлых дней';
 
     // Загрузить свежую версию в обход кэша телефона
     async function updateApp() {
@@ -1207,7 +1207,8 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         const same = previous && previous.photoId === sourceId;
         Object.assign(lastAnalysis, same
             ? { id: previous.id, date: previous.date, time: previous.time, late: previous.late, saved: previous.saved }
-            : { id: newMealId(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now), saved: true });
+            : { id: newMealId(), date: localDate(now), time: now.toTimeString().slice(0, 5), late: isLate(now),
+                saved: !['stock', 'screenshot', 'not_food'].includes(lastAnalysis.photo_type) });
         lastAnalysis.photoId = sourceId;
         renderAnalysis(lastAnalysis);
         saveMeal();
@@ -1377,7 +1378,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
             <div class="result-title">🍽 ${esc(a.dish)}</div>
             <div style="font-size:11px; color:var(--text-muted);">≈ ${r0(t.grams)} г · тарелка ~${r0(a.plate_diameter_cm)} см. ${esc(a.scale_note)}</div>
             ${textNote}
-            ${photoWarn ? `<div class="alert-box">📷 ${photoWarn} — размер порции оценён приблизительно. Точнее всего — своё фото с рукой слева и ложкой справа.</div>` : ''}
+            ${photoWarn ? `<div class="alert-box">📷 ${photoWarn} — размер порции оценён приблизительно. Точнее всего — своё фото с рукой слева и ложкой справа.${a.saved ? '' : '<br><b>В дневник не добавлено.</b> Если вы это съели — нажмите «➕ Добавить в дневник» ниже.'}</div>` : ''}
             <div class="macro-grid">
                 <div class="macro"><b>${r0(t.kcal)}</b><span>ккал</span></div>
                 <div class="macro"><b>${r0(t.protein)}</b><span>белки, г</span></div>
@@ -1426,7 +1427,7 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
             ${a.late ? `<div class="alert-box">🌙 Поздний приём пищи (после ${LAST_MEAL_HOUR}:00). Поздний ужин мешает сну и восстановлению и чаще откладывается в жир — старайтесь заканчивать есть до ${LAST_MEAL_HOUR}:00.</div>` : ''}
             <div class="btn-row">
                 <button class="btn-secondary" onclick="speakResult()">🔊 Озвучить</button>
-                <button class="btn-secondary" onclick="toggleSaved()">${a.saved ? '✅ В дневнике · убрать' : '➕ Вернуть в дневник'}</button>
+                <button class="btn-secondary" onclick="toggleSaved()">${a.saved ? '✅ В дневнике · убрать' : '➕ Добавить в дневник'}</button>
             </div>
             <button class="btn-secondary" onclick="setReminder()">⏰ Напомнить о следующем приёме пищи</button>
             <p style="font-size:10px; color:var(--text-muted); margin-top:6px;">Приём пищи сохранён в дневник за сегодня. Следующий — через 4,5 часа, но не позже ${LAST_MEAL_HOUR}:00. Оценка по фото приблизительная.</p>
@@ -1436,7 +1437,15 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
     // ---------- Дневник: каждый проанализированный приём пищи сохраняется сам ----------
     function dayKey(date = localDate()) { return 'ce_day_' + date; }
     function todayKey() { return dayKey(); }
-    function getDay(date = localDate()) { try { return JSON.parse(localStorage.getItem(dayKey(date)) || '[]'); } catch (e) { return []; } }
+    function getDay(date = localDate()) {
+        let meals;
+        try { meals = JSON.parse(localStorage.getItem(dayKey(date)) || '[]'); } catch (e) { return []; }
+        if (meals.some(m => !m.id)) {
+            meals.forEach(m => { if (!m.id) m.id = newMealId(); });
+            localStorage.setItem(dayKey(date), JSON.stringify(meals));
+        }
+        return meals;
+    }
     function setDay(date, meals) {
         if (meals.length) localStorage.setItem(dayKey(date), JSON.stringify(meals));
         else localStorage.removeItem(dayKey(date));
@@ -1480,6 +1489,23 @@ ${profile.gender === 'male' ? 'Мужчина' : 'Женщина'}${profile.age 
         if (a.saved) saveMeal();
         else { setDay(a.date, getDay(a.date).filter(m => m.id !== a.id)); renderDay(); renderHistory(); }
         renderAnalysis(a);
+    }
+
+    // Карточки приёмов пищи за любой день: номер, тип, время, КБЖУ, состав, изменить/удалить
+    function mealCardsHtml(date, day) {
+        return day.map((m, i) => `<div class="meal-card">
+            <div class="meal-head"><span class="meal-num">${i + 1}</span>
+                <b>${MEAL_TYPES[m.type || autoMealType(m.time, m.totals.kcal)]}</b>
+                <span style="color:var(--text-muted);">${m.late ? '🌙 ' : ''}${esc(m.time)}</span>
+                <span style="margin-left:auto; font-weight:700;">${r0(m.totals.kcal)} ккал</span></div>
+            <div style="margin-top:3px;">${esc(m.dish)}</div>
+            <div style="color:var(--text-muted); font-size:11px;">Б ${r0(m.totals.protein)} · Ж ${r0(m.totals.fat)} · У ${r0(m.totals.carbs)} г${m.manual ? ' · ✍️ вручную' : ''}</div>
+            ${(m.items || []).length || (m.extras || []).length ? `<details style="font-size:11px; margin-top:2px;"><summary style="cursor:pointer; color:var(--text-muted);">Состав</summary><ul style="padding-left:16px; color:var(--text-muted);">${(m.items || []).map(it => `<li>${esc(it.name)} ${it.grams ? it.grams + ' г' : ''}</li>`).join('')}${(m.extras || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+            <div class="meal-actions">
+                <button onclick="openMealEditor('${date}', ${m.id})">✏️ Изменить</button>
+                <button class="del" onclick="removeMeal('${date}', ${m.id})">🗑 Удалить</button>
+            </div>
+        </div>`).join('');
     }
 
     // ---------- Типы приёмов и ручное редактирование ----------
@@ -1612,6 +1638,15 @@ ${text}
         if (!confirm('Убрать этот приём пищи из дневника?')) return;
         setDay(date, getDay(date).filter(m => m.id !== id));
         if (lastAnalysis?.id === id) { lastAnalysis.saved = false; renderAnalysis(lastAnalysis); }
+        renderDay();
+        renderHistory();
+    }
+
+    function clearDate(date) {
+        const label = new Date(date + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+        if (!confirm(`Удалить все приёмы пищи за ${label}?`)) return;
+        localStorage.removeItem(dayKey(date));
+        if (lastAnalysis?.date === date) { lastAnalysis.saved = false; renderAnalysis(lastAnalysis); }
         renderDay();
         renderHistory();
     }
@@ -1761,19 +1796,7 @@ ${text}
         const act = getActivity();
         if (act) advice.unshift(`<li>⌚ Сегодня ${act.steps.toLocaleString('ru-RU')} шагов и ${act.exercise} мин тренировок — потрачено ещё ~${activeKcal(act, num(profile.weight))} ккал, это уже учтено в норме.</li>`);
         const date = localDate();
-        const meals = day.map((m, i) => `<div class="meal-card">
-            <div class="meal-head"><span class="meal-num">${i + 1}</span>
-                <b>${MEAL_TYPES[m.type || autoMealType(m.time, m.totals.kcal)]}</b>
-                <span style="color:var(--text-muted);">${m.late ? '🌙 ' : ''}${esc(m.time)}</span>
-                <span style="margin-left:auto; font-weight:700;">${r0(m.totals.kcal)} ккал</span></div>
-            <div style="margin-top:3px;">${esc(m.dish)}</div>
-            <div style="color:var(--text-muted); font-size:11px;">Б ${r0(m.totals.protein)} · Ж ${r0(m.totals.fat)} · У ${r0(m.totals.carbs)} г${m.manual ? ' · ✍️ вручную' : ''}</div>
-            ${(m.items || []).length || (m.extras || []).length ? `<details style="font-size:11px; margin-top:2px;"><summary style="cursor:pointer; color:var(--text-muted);">Состав</summary><ul style="padding-left:16px; color:var(--text-muted);">${(m.items || []).map(it => `<li>${esc(it.name)} ${it.grams ? it.grams + ' г' : ''}</li>`).join('')}${(m.extras || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
-            <div class="meal-actions">
-                <button onclick="openMealEditor('${date}', ${m.id || 0})">✏️ Изменить</button>
-                <button class="del" onclick="removeMeal('${date}', ${m.id || 0})">🗑 Удалить</button>
-            </div>
-        </div>`).join('');
+        const meals = mealCardsHtml(date, day);
         const repeats = repeatAlerts(date);
 
         document.getElementById('dayBody').innerHTML = `
@@ -1790,6 +1813,7 @@ ${text}
 
     // ---------- Отчёты: день → неделя → месяц ----------
     let period = 'week';
+    const openDays = new Set(); // какие дни в отчёте раскрыты
     function setPeriod(p) { period = p; renderHistory(); }
 
     function dayNorms(date) {
@@ -1880,9 +1904,14 @@ ${text}
             const days = reports.map((r, i) => {
                 const date = shiftDate(today, -i);
                 const label = new Date(date + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
-                return `<details class="meal-row"><summary><span>${label}</span><span>${r ? `${r0(r.sum.kcal)} / ${r0(r.norms.kcal)} ккал · ${r.meals} приём.` : 'нет записей'}</span></summary>
-                    ${r ? `<div style="color:var(--text-muted); margin-top:4px;">Б ${r0(r.sum.protein)} · Ж ${r0(r.sum.fat)} · У ${r0(r.sum.carbs)} · сахар ${r0(r.sum.sugar)} · клетчатка ${r0(r.sum.fiber)} г</div>
-                    <div style="margin-top:4px;">${r.products.map(esc).join(', ')}</div>` : ''}</details>`;
+                return `<details class="meal-row" ${openDays.has(date) ? 'open' : ''} ontoggle="this.open ? openDays.add('${date}') : openDays.delete('${date}')">
+                    <summary><span>${label}</span><span>${r ? `${r0(r.sum.kcal)} / ${r0(r.norms.kcal)} ккал · ${r.meals} приём.` : 'нет записей'}</span></summary>
+                    ${r ? `<div style="color:var(--text-muted); margin:4px 0 6px;">Б ${r0(r.sum.protein)} · Ж ${r0(r.sum.fat)} · У ${r0(r.sum.carbs)} · доб. сахар ${r0(r.sum.sugar)} · клетчатка ${r0(r.sum.fiber)} г</div>
+                    ${mealCardsHtml(date, getDay(date))}` : ''}
+                    <div class="meal-actions" style="margin-bottom:4px;">
+                        <button onclick="openMealEditor('${date}')">➕ Добавить приём</button>
+                        ${r ? `<button class="del" onclick="clearDate('${date}')">🗑 Очистить день</button>` : ''}
+                    </div></details>`;
             }).join('');
             const advice = periodAdvice(sm, 7);
             html = `${summaryHtml(sm)}
